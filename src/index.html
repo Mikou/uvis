@@ -1,0 +1,43 @@
+<!DOCTYPE>
+
+<html>
+  <head>
+    <title>Uvis</title>
+  </head>
+
+  <body>
+    <h1>distributions</h1>
+    <a href="./uvis-latest.js">latest</a>
+
+    <h1>Documentation</h1>
+    <p>Uvis is distributed as a standalone Javascript application.</p>
+    <p>In order to use the service, you must create an HTML page and add a reference to uvis, in the page's head section:</p>
+    <pre>&lt;script src="http://uvis.dk/uvis-&lt;version&gt;.js"&gt;&lt;/script&gt;</pre>
+
+    <p>You then need to specify a minimum configuration, through a "config" object with the following fields:
+      <ul>
+        <li><strong>fileProvider</strong>, a function needed by the system so that it can determinate where to find the external resources (vis and vism files) within your domain.</li>
+        <li><strong>selector</strong>, a string that is the ID of the DOM element you whish the application to be injected into.</li>
+        <li><strong>oData</strong>, a reference to an external OData library (not yet implemented)</li>
+      </ul>
+    <pre>
+      uvis.config({
+        fileProvider: function (fileId) {
+
+          // do request for filename
+
+          return new Promise (resolve, reject) {
+            resolve(<your_file>);
+          }
+        },
+        selector:'<yourApp>',
+        odata:'not yet implemented'
+      });
+    </pre>
+    When your configuration is ready, you can start the visEngine</p>
+    <pre>uvis.run()</pre>
+
+    NOTE: If your fileProvider does not link properly to your external resources, the visEngine will fail.
+    </p>
+  </body>
+</html>
