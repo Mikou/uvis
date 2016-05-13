@@ -1,6 +1,6 @@
 
-//var moment = require('moment');
-var validDate = ['D-M-YYYY HH:mm:SS', 'D-M-YYYY', 'HH:mm:SS'];
+const moment = require('moment');
+const validDate = ['D-M-YYYY HH:mm:SS', 'D-M-YYYY', 'HH:mm:SS'];
 
 
 function TokenStream(input) {
@@ -26,7 +26,7 @@ function TokenStream(input) {
     return /[a-zA-Z]/i.test(ch);
   }
   function isId(ch) {
-    return isIdStart(ch) || "?-<>=0123456789".indexOf(ch) >= 0;
+    return isIdStart(ch) || "0123456789".indexOf(ch) >= 0;
   }
   function isOpChar(ch) {
     return ":+-*/%=&|<>".indexOf(ch) >= 0;

@@ -1,11 +1,11 @@
 let selector   = undefined;
-let HTMLCanvas = undefined;
+let HTMLCanvas = null;
 let context    = undefined;// = HTMLCanvas.getContext("2d");
 const types = {};
 const validators = {};
 let tree = undefined;
 
-let baseProperties = undefined
+let baseProperties = null;
 
 function reflow (context) {
   traverseTree(tree, function(Component) {
@@ -53,7 +53,14 @@ function genericDraw (context) {
 function createBaseComponent () {
   var Component = {
     children: [],
-    properties: baseProperties,
+    properties: {
+			Top   : createProperty('Top',    {initialValue:10,      validator:getValidator('integer')}),
+	    Left  : createProperty('Left',   {initialValue:10,      validator:getValidator('integer')}),
+  	  Width : createProperty('Width',  {initialValue:100,     validator:getValidator('integer')}),
+  	  Height: createProperty('Height', {initialValue:50,      validator:getValidator('integer')}),
+  	  Color: createProperty('Color',   {initialValue:'Black', validator:getValidator('color')}),
+  	  BackgroundColor: createProperty('BackgroundColor', {initialValue:'White', validator:getValidator('color')})
+		},
     draw: genericDraw,
     getProperty: function (name) {
       // (1) lookup in the local properties
@@ -185,16 +192,32 @@ function createComponent (type) {
 }
 
 function getComponentType (type) {
-
   if(types.hasOwnProperty(type))
     return types[type];
+  return undefined;
+}
+
+function inspect (type, property) {
+  const T = types[type];
+  if(typeof T === 'undefined' || !property)
+    return T;
+  const properties = T.properties;
+  if(properties.hasOwnProperty(property)) {
+    return properties[property];
+  } else if(T.extends) {
+    throw new Error('NOT YET IMPLEMENTED');
+  } else if(baseProperties.hasOwnProperty(property)) {
+    return baseProperties[property];
+  }
 
   return undefined;
 }
 
+
+
 function getPropertyForComponentType(name, typeRef) {
   const type = getComponentType(typeRef);
-  if(typeof type === 'undefined') throw new Error("The requested Component Type "+typeRef+" does not exist");
+  if(!type) throw new Error("The requested Component Type "+typeRef+" does not exist");
 
   const properties = type.properties;
   if(properties.hasOwnProperty(name)) {
@@ -344,13 +367,16 @@ function getTree () {
 }
 
 function createHTMLCanvas(selector) {
-  HTMLCanvas = document.createElement('canvas');
-  context = HTMLCanvas.getContext("2d");
+  // should only be created if not already there
+  if(!HTMLCanvas) {
+    HTMLCanvas = document.createElement('canvas');
+    context = HTMLCanvas.getContext("2d");
   
-  selector.appendChild(HTMLCanvas);
+    selector.appendChild(HTMLCanvas);
+  }
 }
 
-function init (config) {
+/*function init (config) {
   createHTMLCanvas(config.selector);
   setupBuiltInValidators();
   setupBuiltInComponents();
@@ -368,24 +394,35 @@ function init (config) {
 
   window.onresize = function () {
   }
+}*/
+setupBuiltInValidators();
+setupBuiltInComponents();
 
-  return {
-    registerComponent: registerComponent,
-    createComponent: createComponent,
-    getComponentType: getComponentType,
-    getPropertyForComponentType: getPropertyForComponentType,
-    registerValidator: registerValidator,
-    getValidator: getValidator,
-    tree: getTree(),
-    debug: {
-      getTypes: function() {
-        return types;
-      },
-      getTree: function () {return tree;}
-    }
+baseProperties = {
+  Top   : createProperty('Top',    {initialValue:10,      validator:getValidator('integer')}),
+  Left  : createProperty('Left',   {initialValue:10,      validator:getValidator('integer')}),
+  Width : createProperty('Width',  {initialValue:100,     validator:getValidator('integer')}),
+  Height: createProperty('Height', {initialValue:50,      validator:getValidator('integer')}),
+  Color: createProperty('Color',   {initialValue:'Black', validator:getValidator('color')}),
+  BackgroundColor: createProperty('BackgroundColor', {initialValue:'White', validator:getValidator('color')})
+};
 
-  }
-}
+
 export default {
-  init: init,
+  registerComponent: registerComponent,
+  createComponent: createComponent,
+  getComponentType: getComponentType,
+  getPropertyForComponentType: getPropertyForComponentType,
+  inspect: inspect,
+  registerValidator: registerValidator,
+  getValidator: getValidator,
+  createHTMLCanvas: createHTMLCanvas,
+  getTree: getTree,
+  debug: {
+    getTypes: function() {
+      return types;
+    },
+    getTree: function () {return tree;}
+  }
+
 }
