@@ -1,6 +1,13 @@
 let tree = undefined;
 const templates = [];
 
+function traverseTree (Template, cb) {
+  cb(Template);
+  for(var child in Template.children){
+    traverseTree(Template.children[child], cb);
+  }
+}
+
 function setTemplateName (name) {
   this.name = name;
 }
@@ -9,27 +16,13 @@ function setFormulaForProperty(propName, formula) {
   this.properties[propName] = formula;
 }
 
-function getComponentType() {
-  return this.componentType;
-}
-
-function setComponentType(name) {
-  if(typeof name !== 'string')
-    throw new Error("The component name must be defined as a string");
-
-  this.componentType = name;
-}
-
-function setRows (formula) {
-  this.rows = formula;
-}
-
-function getRows () {
-  return this.rows;
-}
-
 function setProperty(name, formula) {
   this.properties[name] = formula;
+}
+
+function getProperty (name) {
+  if(this.properties.hasOwnProperty(name)) 
+    return this.properties[name];
 }
 
 function appendChild (template) {
@@ -39,32 +32,64 @@ function appendChild (template) {
   this.children.push(template);
 }
 
+
+function getResource (name) {
+
+  const data = this.data;
+  debugger;
+  if(data.name === name)
+    return data.data;
+
+  throw new Error("no such resource '" + name + "'.");
+
+}
+
 function createTemplate () {
 
-  const template = {
+  const templateProto = {
+    setProperty: setProperty,
+    getProperty: getProperty,
+    getResource: getResource,
+    appendChild: appendChild,
+    setFormulaForProperty: setFormulaForProperty
+  }
+  
+  const template = Object.create(templateProto, {
+    name:          {writable: true, value: null},
+    type:          {writable: false, value: 'template'},
+    componentType: {writable: true, value: null},
+    rows:          {writable: true, value: null},
+    parent:        {writable: true, value: null},
+    visited:       {writable: true, value: false},
+    bundle:        {writable: true, value: []},
+    properties:    {writable: true, value: {}},
+    children:      {writable: true, value: []},
+    query:         {writable: true, value: null}
+  });
+  
+  /*const template = {
     type: 'template',
     componentType: undefined,
     name: '',
     rows: undefined,
+    parent: null,
+    visited: false,
     bundle: [],
     properties: {},
     children: [],
-    query: {},
+    recordSet: {},
+    query: null,
     entities: [],
     entitiesReady:false,
-    setName: setTemplateName,
-    getRows: getRows,
-    setRows: setRows,
-    setProperty: setProperty,
-    appendChild: appendChild,
-    setComponentType: setComponentType,
-    getComponentType: getComponentType,
-    setFormulaForProperty: setFormulaForProperty
-  };
+  };*/
 
-  templates.push(template);
+  //templates.push(template);
   return template;
 
+}
+
+function addTemplate (template) {
+  templates.push(template)
 }
 
 function setTree(rootTemplate) {
@@ -82,9 +107,20 @@ function getTemplateList () {
   return templates;
 }
 
+function findTemplate(name) {
+  for(let i in templates) {
+    if(templates[i].name === name)
+      return templates[i];
+  }
+  throw new Error("No such template " + name);
+}
+
 export default {
   createTemplate: createTemplate,
+  addTemplate: addTemplate,
   setTree: setTree,
   getTree: getTree,
-  getTemplateList: getTemplateList
+  traverseTree: traverseTree,
+  getTemplateList: getTemplateList,
+  findTemplate: findTemplate
 }

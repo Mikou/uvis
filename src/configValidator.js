@@ -1,16 +1,8 @@
 export default function configValidator(userConfig) {
-  if(typeof userConfig.fileProvider !== 'function')
+  if(typeof userConfig.resourceProvider !== 'function')
     throw new Error("You must provide a fileProvider function");
 
-  const fileProvider = userConfig.fileProvider;
-
-  if(typeof userConfig.databaseConnector !== 'function')
-    throw new Error("You must provide a databaseConnector function");
-
-  const databaseConnector = userConfig.databaseConnector;
-
-  if(typeof userConfig.odatajs !== 'object')
-    throw new Error("an odatajs library must be provided");
+  const resourceProvider = userConfig.resourceProvider;
 
   if(typeof userConfig.initialVismfile !== 'string' || userConfig.initialVismfile === '')
     throw new Error("You must provide an initialVismfile as a string.");
@@ -25,8 +17,7 @@ export default function configValidator(userConfig) {
     throw new Error("The app selector is not valid");
 
   return {
-    fileProvider: fileProvider,
-    databaseConnector: databaseConnector,
+    resourceProvider: resourceProvider,
     initialVismfile: initialVismfile,
     selector: selector
   };
