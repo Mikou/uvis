@@ -95,7 +95,6 @@ function createEntity(name) {
   return entity;
 }
 
-
 export default {
   createEntity: createEntity,
   setStartUpFormName: setStartUpFormName,

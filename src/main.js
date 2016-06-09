@@ -170,7 +170,6 @@ window.uvis = {
   },
   run: function () {
     resourceProvider('vismfile', initialVismfile).then(function(stream) {
-
       map.setSchemaParser(schemaParser);
       map.setSchemaMapper(schemaMapper);
       map.setResourceProvider(resourceProvider);
@@ -192,7 +191,6 @@ window.uvis = {
           form: form
         });
 
-        debugger;
         visParser.parse();
 
         // preevaluate rows in order to build the template Tree
@@ -202,7 +200,6 @@ window.uvis = {
           const template = templateList[name];
           if(template.rows) {
             const env = {form: form, map: map, template: template, property: 'Rows'};
-            debugger;
             preEvaluate(template.rows, env);
           } else {
             form.getTree().appendChild(template);
@@ -221,7 +218,6 @@ window.uvis = {
         var dataQueue = [];
 
         for(let i in templateList) {
-
           if(templateList[i].query) {
             dataQueue.push(resourceProvider('query', templateList[i]));
           }
@@ -235,19 +231,14 @@ window.uvis = {
         canvas.createHTMLCanvas(selector);
 
         function render(template) {
-          let component = null;
-          if(template.componentType === 'CANVAS') {
-            component = canvas.getTree();
-          } else {
-            component = canvas.createComponent(template.componentType);
-          }
 
           if(template.rows) {
             const env = {form: form, map: map, template: template, property: 'Rows'};
             const instances = evaluate(template.rows, env);
+            env.instances = instances;
             if(instances) {
               for(let i=0, len=instances.length; i<len; i++) {
-                component = canvas.createComponent(template.componentType);
+                const component = canvas.createComponent(template.componentType);
                 template.index=i;
                 template.instance = instances[i];
                 for(let propertyName in template.properties) {
@@ -265,11 +256,16 @@ window.uvis = {
               }
             }
           } else {
-            const env = {form:form, template: template, property:'Rows'};
+            const tmpCanvas = canvas;
+            const component = (template.componentType === 'CANVAS') ? canvas.getTree() : canvas.createComponent(template.componentType);
+            const env = {form:form, template: template};
             for(let propName in template.properties) {
-               const v = evaluate(template.properties[propName], env);
-               component.setProperty(propName, v);
+              env.property = propName;
+              const v = evaluate(template.properties[propName], env);
+              component.setProperty(propName, v);
             }
+            if(template.componentType !== 'CANVAS')
+              canvas.getTree().appendChild(component);
             if(template.children) {
               for(let i=0, len=template.children.length; i<len; i++) {
                 render(template.children[i]);
@@ -300,20 +296,22 @@ function createPathReader (path) {
     path = (value !== null) ? path.next : undefined;
     return value;
   }
-
   function hasNext() {
     return (typeof path !== 'undefined');
   }
-
   function peek () {
     if(typeof path === 'undefined') return null;
     return path.content;
+  }
+  function getIndex () {
+    return path.index;
   }
 
   return {
     hasNext: hasNext,
     next: next,
-    peek: peek
+    peek: peek,
+    getIndex: getIndex
   }
 }
 
@@ -325,8 +323,97 @@ function findRecordSet (name) {
 
 function evaluate(exp, env) {
 
-  function applyOp (op, left, right) {
+  function walkToMap (pathReader, env) {
+    const form = env.form;
+    const separator = evaluate(pathReader.next(), env);
+    const index = pathReader.getIndex();
+    const resourceName = evaluate(pathReader.next(), env);
+    let data = null;
+    if(env.property === 'Rows') {
+      if(!pathReader.hasNext()) {
+        if(env.template.parent) {
+          return resourceName;
+        } else {
+          data = env.template.data[resourceName];
+        }
+        return data;
+      }
+    } else {
+      let instance = env.template.instance;
+      if(instance.hasOwnProperty(resourceName))
+        instance = instance[resourceName];
+      pathReader.next(); // separator
+      if(index) {
+        var indexValue = evaluate(index, env);
+        if(indexValue >= env.instances.length)
+          throw new Error("Null pointer exception");
+        instance = env.instances[indexValue];
+      }
+      const fieldName = evaluate(pathReader.next(), env);
+      if(env.template.parent) {
+        const res = instance[fieldName];
+        return res;
+      } else {
+        const res = env.template.data[resourceName][env.template.index][fieldName];
+        return res;
+     }
+    }
+  }
 
+  function walkToForm (pathReader, env) {
+    const separator = evaluate(pathReader.next(), env);
+    const templateName = evaluate(pathReader.next(), env);
+    const template = env.form.findTemplate(templateName);
+    if(!template)
+      throw new Error("Template '" + templateName + "' does not exits");
+    
+    if(env.property === 'Rows') {
+      if(pathReader.hasNext()) {
+        pathReader.next();
+      } else {
+        return template.instance;
+      }
+    } else {
+      pathReader.next();
+      var property = evaluate(pathReader.next(), env);
+      return evaluate(template.properties[property], env);
+    }
+  }
+
+  function walkToParent (pathReader, env) {
+
+    pathReader.next();
+    const parent = env.template.parent;
+    const propName = evaluate(pathReader.next(), env);
+    const prop = parent.properties[propName];
+    const tmpEnv = {
+      form: env.form, map:env.map, template: parent, property: propName
+    };
+    const value = evaluate(prop, tmpEnv);
+    return value;
+  }
+
+  function inferValue(exp, env) {
+    let tally = [];
+    // lookup in parent
+    if(env.template.parent) {
+      const parent = env.template.parent;
+      const property = parent.properties[exp.name];
+      if(property)
+        tally.parent = parent;
+    }
+
+    // lookup form
+    var template = env.form.findTemplate(exp.value)
+    if(template) {
+      tally.template = template;
+    }
+
+    return exp;
+  }
+
+
+  function applyOp (op, left, right) {
     function num(x) {
         if (typeof x != "number")
             throw new Error("Expected number but got " + x);
@@ -339,15 +426,20 @@ function evaluate(exp, env) {
         if(typeof left === 'number' && typeof right === 'number')
           return num(left) + num(right);
         return left + "" + right;
+      case '<':
+        return null;
+      case '>':
+        return null;
       case '-<':
         return left[right];
       case '>-':
         return left;
       case 'WHERE':
         return left;
-
+      
+      default:
+          throw new Error('Not yet implemented');
     } 
-
   }
 
   switch(exp.type) {
@@ -360,79 +452,20 @@ function evaluate(exp, env) {
       const right = evaluate(exp.right, env);
       return applyOp(exp.operator, left, right);
       break;
-
     case 'path':
       const pathReader = createPathReader(exp);
       const router = evaluate(pathReader.next(), env);
-      return router(pathReader);
+      return router(pathReader, env);
       break;
-
-
     case 'num':
     case 'str':
       return exp.value;
-
     case 'id':
-      if(exp.value === 'index') return env.template.index;
-      if(exp.value === 'Map') return function (pathReader) {
-        const form = env.form;
-        const separator = evaluate(pathReader.next(), env);
-        const resourceName = evaluate(pathReader.next(), env);
-        let data = null;
-        if(env.property === 'Rows') {
-          if(!pathReader.hasNext()) {
-            if(env.template.parent) {
-              return resourceName;
-            } else {
-              data = env.template.data[resourceName];
-            }
-            return data;
-          }
-        } else {
-          let instance = env.template.instance;
-          if(instance.hasOwnProperty(resourceName))
-            instance = instance[resourceName];
-          pathReader.next(); // separator
-          const fieldName = evaluate(pathReader.next(), env);
-          if(env.template.parent) {
-            const res = instance[fieldName];
-            return res;
-          } else {
-            const res = env.template.data[resourceName][env.template.index][fieldName];
-            return res;
-         }
-        }
-      }
-
-      if(exp.value === 'Form') return function (pathReader) {
-        const separator = evaluate(pathReader.next(), env);
-        const templateName = evaluate(pathReader.next(), env);
-        
-        if(env.property === 'Rows') {
-          if(pathReader.hasNext()) {
-            pathReader.next();
-          } else {
-            const template = env.form.findTemplate(templateName);
-            return template.instance;
-          }
-        }       
-
-
-      }
-
-      if(exp.value === 'Parent') return function (pathReader) {
-
-        pathReader.next();
-        const parent = env.template.parent;
-        const propName = evaluate(pathReader.next(), env);
-        const prop = parent.properties[propName];
-        const tmpEnv = {
-          form: env.form, map:env.map, template: parent, property: propName
-        };
-        const value = evaluate(prop, tmpEnv);
-        return value;
-      }
-      return exp.value;
+      if(exp.value === 'index')  return env.template.index;
+      if(exp.value === 'Map')    return walkToMap;
+      if(exp.value === 'Form')   return walkToForm;
+      if(exp.value === 'Parent') return walkToParent;
+      return inferValue(exp.value, env);
       break;
 
   }
@@ -485,13 +518,18 @@ function preEvaluate(exp, env) {
     if(op === '>') {
       if(typeof left.type !== 'undefined' && left.type === 'filter') {
         return {type:'filter', target: left, op: op, value: right};
-
       }
     }
 
+    if(op === '=') {
+      if(typeof left.type !== 'undefined' && left.type === 'filter') {
+        return {type:'filter', target: left, op: op, value: right};
+      }
+    }
 
     if(op === 'WHERE') {
       left.filter = right;
+      return left;
     }
 
   }
@@ -526,6 +564,10 @@ function preEvaluate(exp, env) {
       const router = preEvaluate(pathReader.next(), env);
       return router(pathReader);
 
+    case 'num':
+    case 'str':
+      return exp.value;
+
     case 'id':
       if(exp.value === 'Map') return function (pathReader) {
         const separator = preEvaluate(pathReader.next(), env);
@@ -536,7 +578,7 @@ function preEvaluate(exp, env) {
         if(env.property === 'Rows') {
           if(pathReader.hasNext()) {
             pathReader.next(); // skip separator
-            if(resourceName === 'activity');
+            //if(resourceName === 'activity');
             return { type: 'filter',
               resource: resourceName,
               field: preEvaluate(pathReader.next(), env)
@@ -602,6 +644,7 @@ function preEvaluate(exp, env) {
       return exp.value;
 
     case 'datetime':
+      if(!exp.value.isValid()) throw new Error("Invalid date");
       return exp.value.toString();
   }
 

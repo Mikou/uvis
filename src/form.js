@@ -45,7 +45,6 @@ function getResource (name) {
 }
 
 function createTemplate () {
-
   const templateProto = {
     setProperty: setProperty,
     getProperty: getProperty,
@@ -67,25 +66,7 @@ function createTemplate () {
     query:         {writable: true, value: null}
   });
   
-  /*const template = {
-    type: 'template',
-    componentType: undefined,
-    name: '',
-    rows: undefined,
-    parent: null,
-    visited: false,
-    bundle: [],
-    properties: {},
-    children: [],
-    recordSet: {},
-    query: null,
-    entities: [],
-    entitiesReady:false,
-  };*/
-
-  //templates.push(template);
   return template;
-
 }
 
 function addTemplate (template) {
@@ -112,7 +93,8 @@ function findTemplate(name) {
     if(templates[i].name === name)
       return templates[i];
   }
-  throw new Error("No such template " + name);
+  return undefined;
+  //throw new Error("No such template " + name);
 }
 
 export default {

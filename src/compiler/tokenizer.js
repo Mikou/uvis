@@ -1,6 +1,6 @@
 
 const moment = require('moment');
-const validDate = ['D-M-YYYY HH:mm:SS', 'D-M-YYYY', 'HH:mm:SS'];
+const validDate = ['D-M-YYYY HH:mm:SS', 'D-M-YYYY HH:mm', 'D-M-YYYY', 'HH:mm:SS'];
 
 
 function TokenStream(input) {
@@ -32,7 +32,7 @@ function TokenStream(input) {
     return ":+-*/%=&|<>".indexOf(ch) >= 0;
   }
   function isPunc(ch) {
-    return "!,;(){}[].".indexOf(ch) >= 0;
+    return "!.[],".indexOf(ch) >= 0;
   }
   function isWhitespace(ch) {
     return " \t".indexOf(ch) >= 0;
@@ -67,41 +67,6 @@ function TokenStream(input) {
     return {type:'id', value:id};
   }
 
-  /*function readIdentOrPath() {
-
-    const id = readIdent();
-    
-    if(isPathSeparator(input.peek())) {
-      return readIdentOrPath();
-    }
-
-
-    let path = [];
-    let id = "";
-    let isPath = false;
-    while(isPathSeparator(input.peek()) || isId(input.peek())){
-      if(input.eof()) break;
-      id = readWhile(isId);
-      const pathGroup = {};
-      pathGroup['id'] = {type:'id', value:id};
-      if(isPathSeparator(input.peek())) {
-        isPath = true;
-        pathGroup['separator'] = {type:'punc', value:input.next()};
-      }
-      path.push(pathGroup);
-    }
-
-    if(id.toUpperCase() === 'WHERE') {
-      return {type:"op", value:"WHERE"};
-    }
-
-    if(isPath) {
-      return { type: 'path', path: path }
-    } else {
-      return { type: 'id', value: id }
-    }
-  }*/
-  
   function readTemplateSeparator() {
     var ch = input.peek();
     readWhile(function(ch) { return (!input.eof() && ch !== '\n'); });
@@ -114,14 +79,17 @@ function TokenStream(input) {
   function readDatetime(format){
     var ch=input.next();
 
-    var date=String();
+    var dateStr=String();
+    var date;
     while(!input.eof()){
       ch = input.next();
       if(ch==='#') break;
-      date+=ch;
+      dateStr+=ch;
     }
-    date = moment(date, validDate, true);
-    if(!date.isValid()) date = moment(0);
+    date = moment(dateStr, validDate, true);
+    
+    if(!date.isValid())
+      throw new Error("Invalid date format: " + dateStr);
 
     //date = moment(0);
 
@@ -164,7 +132,6 @@ function TokenStream(input) {
       if(tok === ">" && input.peek() === "-") 
         return {type:"op", value:tok + input.next()};
     };
-
 
   function skipComment () {
     readWhile(function(ch){ return ch != "\n" });

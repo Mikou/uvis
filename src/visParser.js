@@ -50,6 +50,9 @@ function parsePath(expr) {
     content: expr
   };
   if(expr.type == 'id') {
+    if(isPunc("[")) {
+      path.index = delimited("[", "]", parseAtom);
+    }
     if(isPunc(".") || isPunc("!")) path.next = parsePath(ts.next());
   } else if(expr.type == 'punc') {
     if(tok.type=='id') path.next = parsePath(ts.next());
@@ -61,15 +64,13 @@ function parsePath(expr) {
 }
 
 function maybePath(expr) {
-  var v = (isPunc(".") || isPunc("!")) ? parsePath(expr) : expr;
-  return v;
+  return (isPunc(".") || isPunc("!")) ? parsePath(expr) : expr;
 }
 
 // extends an expression as much as possible to the right
 function maybe_binary(left, my_prec) {
   var tok = isOp();
   if (tok) {
-    //console.log(PRECEDENCE);
     var his_prec = PRECEDENCE[tok.value];
     if (his_prec > my_prec) {
       ts.next();
@@ -86,15 +87,9 @@ function maybe_binary(left, my_prec) {
   return left;
 }
 
-function delimited(start, stop, separator, parser) {
-  var a = [], first = true;
+function delimited(start, stop, parser) {
   skip_punc(start);
-  while (!ts.eof()) {
-    if (isPunc(stop)) break;
-    if (first) first = false; else skip_punc(separator);
-    if (isPunc(stop)) break;
-    a.push(parser());
-  }
+  var a = parser();
   skip_punc(stop);
   return a;
 }
@@ -109,6 +104,8 @@ function parseAtom() {
       tok.type === "num"  || 
       tok.type === "str")
     return tok;
+
+  ts.croak("Unexpected token " + JSON.stringify(ts.peek()));
 
 }
 
@@ -169,7 +166,7 @@ function parseTemplate () {
 
   // Try to determinate the component type
   for(var key in tplDefinition)
-    if (typeof canvas.inspect(key) !== 'undefined')
+    if (typeof canvas.inspect(false, key) !== 'undefined')
       template.componentType = key;
       //template.setComponentType(key);
 
@@ -213,8 +210,7 @@ function parseTemplate () {
     // when the component type is known, we can check the keys against the component type
     for(var key in tplDefinition) {
       //if(canvas.getPropertyForComponentType(key, template.componentType)) {
-      debugger;
-      if(canvas.inspect(template.componentType, key)) {
+      if(canvas.inspect(false, template.componentType, key)) {
         template.setFormulaForProperty(key, tplDefinition[key]);
       } else {
         if(key === template.componentType) {
