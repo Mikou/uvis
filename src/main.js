@@ -10,168 +10,24 @@ import visMapValidator from './visMapValidator';
 import browserValidator from './browserValidator';
 
 let initialVismfile = null;
+let visfile = null;
 let resourceProvider = null;
 let dbConnector = null;
 let selector = null;
 let visMap = null;
 let oData = null;
-let schemaParser = null;
-let schemaMapper = null;
+const events = {};
 
-function defaultSchemaProvider (uri) {
+function run () {
+    resourceProvider('vismfile', {
+      filename:initialVismfile, 
+      method:'GET'
+    }).then(function(stream) {
 
-  return new Promise(function (resolve, reject) {
-    const xhr = new XMLHttpRequest();
+      const vismfileCallback = events['vismFileLoaded'];
+      if(typeof vismfileCallback === 'function')
+        vismfileCallback(stream);
 
-    xhr.open("GET", uri+ '/$metadata');
-    xhr.send();
-    xhr.onreadystatechange = function() {
-      if (xhr.readyState == 4 && xhr.status == 200) {
-        var stream = xhr.responseText;
-        resolve(stream);
-         // Action to be performed when the document is read;
-      }
-    };
-  });
-}
-
-function defaultSchemaParser (stream) {
-
-  // credit: https://davidwalsh.name/convert-xml-json
-  // Changes XML to JSON
-  function xmlToJson(xml) {
-    
-    // Create the return object
-    var obj = {};
-
-    if (xml.nodeType == 1) { // element
-      // do attributes
-      if (xml.attributes.length > 0) {
-      obj["@attributes"] = {};
-        for (var j = 0; j < xml.attributes.length; j++) {
-          var attribute = xml.attributes.item(j);
-          obj["@attributes"][attribute.nodeName] = attribute.nodeValue;
-        }
-      }
-    } else if (xml.nodeType == 3) { // text
-      obj = xml.nodeValue;
-    }
-
-    // do children
-    if (xml.hasChildNodes()) {
-      for(var i = 0; i < xml.childNodes.length; i++) {
-        var item = xml.childNodes.item(i);
-        var nodeName = item.nodeName;
-        if (typeof(obj[nodeName]) == "undefined") {
-          obj[nodeName] = xmlToJson(item);
-        } else {
-          if (typeof(obj[nodeName].push) == "undefined") {
-            var old = obj[nodeName];
-            obj[nodeName] = [];
-            obj[nodeName].push(old);
-          }
-          obj[nodeName].push(xmlToJson(item));
-        }
-      }
-    }
-    return obj;
-  };
-  
-  const xmlSchema = ( new window.DOMParser() ).parseFromString(stream, "text/xml");
-  return xmlToJson(xmlSchema);
-
-}
-
-
-function defaultSchemaMapper (vismSchema, dbSchema) {
-
-  dbSchema = dbSchema['edmx:Edmx']['edmx:DataServices'].Schema;
-  const namespace = dbSchema['@attributes'].Namespace;
-
-  function convertODataType (type) {
-    switch(type) {
-      case "Edm.Int32":
-        return "Number";
-      case "Edm.String":
-        return "String";
-      case "Edm.Date":
-        return "Date";
-      default:
-        throw new Error("unknown type:" + type);
-    }
-  }
-
-  function getEntityType (name) {
-    for(let i in dbSchema.EntityType) {
-      const entityType = dbSchema.EntityType[i];
-      const fullyQualifiedName = namespace + "." + entityType['@attributes'].Name;
-      if(fullyQualifiedName === name) return entityType;
-    } 
-    throw new Error("entityType " + name + " not found in the schema");
-  }
-  
-  function getEntitySet (name) {
-    const entityContainer = dbSchema.EntityContainer; 
-    for(let i in entityContainer.EntitySet) {
-      let entitySet = entityContainer.EntitySet[i];
-      if(name === entitySet['@attributes'].Name) return entitySet;
-    }
-    throw new Error("entitySet " + name + " not found in the schema");
-  }
-
-  const schema = {};
-  for(let entityRef in vismSchema) {
-    const visEntity = {
-      type:'entity',
-      name: entityRef, 
-      properties: {},
-      relations: []
-    };
-    const entitySet = getEntitySet(entityRef);
-    const entityType = getEntityType(entitySet['@attributes'].EntityType);
-    const pKey = entityType.Key.PropertyRef['@attributes'].Name;
-    if(entityType.Property instanceof Array) {
-      for(let propertyRef in entityType.Property) {
-        const property = entityType.Property[propertyRef];
-        visEntity.properties[property['@attributes'].Name] = {
-          type: 'entityProperty',
-          isPKey: (pKey === property['@attributes'].Name),
-          isCandidate: false,
-          propertyType: convertODataType(property['@attributes'].Type)
-        }
-      }
-    } else {
-      throw new Error("single property entities not supported yet");
-    }
-    schema[entityRef] = visEntity;
-  }
-
-  return schema;
-
-}
-
-window.uvis = {
-  defaultSchemaProvider : defaultSchemaProvider,
-  defaultSchemaParser: defaultSchemaParser,
-  defaultSchemaMapper: defaultSchemaMapper,
-  config: function (userConfig) {
-    browserValidator();
-    // We should also ensure that document.readyState == 'complete'
-    // before validating the user configuration;
-    const validConfig = configValidator(userConfig);
-    initialVismfile = validConfig.initialVismfile;
-    resourceProvider = validConfig.resourceProvider;
-    dbConnector = validConfig.databaseConnector;
-    selector = validConfig.selector;
-    // for the schema parser and schema mapper we could support a default one
-    schemaParser = userConfig.schemaParser;
-    schemaMapper = userConfig.schemaMapper;
-
-  },
-  run: function () {
-    resourceProvider('vismfile', initialVismfile).then(function(stream) {
-      map.setSchemaParser(schemaParser);
-      map.setSchemaMapper(schemaMapper);
       map.setResourceProvider(resourceProvider);
 
       vismParser.init({
@@ -184,6 +40,10 @@ window.uvis = {
       map.buildSchema().then(function () {
         return map.downloadForm();
       }).then(function (startupformStr) {
+
+        const visfileCallback = events['visFileLoaded'];
+        if(typeof visfileCallback === 'function')
+          visfileCallback(startupformStr);
 
         visParser.init({
           tokenizer: tokenizer(streamReader(startupformStr)), 
@@ -226,12 +86,10 @@ window.uvis = {
       return Promise.all(dataQueue);
 
       }).then(function(data) {
-
         const templateList = form.getTemplateList();
         canvas.createHTMLCanvas(selector);
 
         function render(template) {
-
           if(template.rows) {
             const env = {form: form, map: map, template: template, property: 'Rows'};
             const instances = evaluate(template.rows, env);
@@ -273,9 +131,7 @@ window.uvis = {
             }
           }
         }
-
         render(form.getTree());
-
       }).catch(function(err) {
         const pre = document.createElement('pre');
         pre.appendChild(document.createTextNode("Error: " + err.message));
@@ -288,7 +144,6 @@ window.uvis = {
       })
     });
   }
-}
 
 function createPathReader (path) {
   function next () {
@@ -381,7 +236,6 @@ function evaluate(exp, env) {
   }
 
   function walkToParent (pathReader, env) {
-
     pathReader.next();
     const parent = env.template.parent;
     const propName = evaluate(pathReader.next(), env);
@@ -412,12 +266,11 @@ function evaluate(exp, env) {
     return exp;
   }
 
-
   function applyOp (op, left, right) {
     function num(x) {
-        if (typeof x != "number")
-            throw new Error("Expected number but got " + x);
-        return x;
+      if (typeof x != "number")
+        throw new Error("Expected number but got " + x);
+      return x;
     }
 
     switch(op) {
@@ -467,9 +320,7 @@ function evaluate(exp, env) {
       if(exp.value === 'Parent') return walkToParent;
       return inferValue(exp.value, env);
       break;
-
   }
-
 }
 
 function preEvaluate(exp, env) {
@@ -629,7 +480,6 @@ function preEvaluate(exp, env) {
             parent.appendChild(env.template);
           }
         }
-
       }
 
       if(exp.value === 'Parent') return function (pathReader) {
@@ -647,5 +497,42 @@ function preEvaluate(exp, env) {
       if(!exp.value.isValid()) throw new Error("Invalid date");
       return exp.value.toString();
   }
-
 }
+
+function reset () {
+  //map.reset();
+  //form.reset();
+  canvas.reset();
+}
+
+window.uvis = {
+  addEventListener: function (name, fn) {
+    events[name] = fn;
+  },
+  saveVisfile: function (stream) {
+    resourceProvider('visfile', {
+      filename:map.getVisfileName(),
+      method:'POST',
+      content:stream
+    }).then(function(result) {
+      reset();
+      run();
+    }).catch(function (err) {
+      throw new Error("failed to write visfile", err);
+    });
+  },
+  config: function (userConfig) {
+    browserValidator();
+    const validConfig = configValidator(userConfig);
+    initialVismfile   = validConfig.initialVismfile;
+    resourceProvider  = validConfig.resourceProvider;
+    dbConnector       = validConfig.databaseConnector;
+    selector          = validConfig.selector;
+  },
+  getQueryTranslator: function (queryModel) {
+    const selectedDbProvider = map.getSelectedDbProvider();
+    const dbProvider = map.getProvider(selectedDbProvider);
+    return dbProvider.translator;
+  },
+  run: run
+};

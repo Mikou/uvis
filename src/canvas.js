@@ -399,7 +399,12 @@ function createHTMLCanvas(selector) {
 setupBuiltInValidators();
 setupBuiltInComponents();
 
+function reset () {
+  tree.children = [];
+}
+
 export default {
+  reset: reset,
   registerComponent: registerComponent,
   createComponent: createComponent,
   inspect: inspect,
