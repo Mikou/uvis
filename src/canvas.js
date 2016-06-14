@@ -1,9 +1,9 @@
-let selector   = undefined;
-let HTMLCanvas = null;
-let context    = undefined;
 const types = {};
-const validators = {};
-let tree = undefined;
+const validators   = {};
+let selector       = undefined;
+let HTMLCanvas     = null;
+let context        = undefined;
+let tree           = undefined;
 let baseProperties = null;
 
 function reflow (context) {
@@ -35,7 +35,6 @@ function reflow (context) {
 function getType (name) {
   if(typeof types[name] === 'undefined')
     throw new Error("Type '" + name + "' does not exist.");
-
   return types[name];
 }
 
@@ -208,10 +207,7 @@ function setupBuiltInValidators () {
     for(var color in CSS_COLOR_NAMES)
       if(input.toUpperCase() === CSS_COLOR_NAMES[color].toUpperCase())
         return;
-
     throw new Error("the provided input '"+input+"' for property '" + propertyName + "' cannot be recognized as a valid 'color'.");
-
-
   });
 }
 
@@ -276,8 +272,6 @@ function setupBuiltInComponents () {
       context.fill();
 
       if(border) {
-        if(border !== 1)
-          console.log(border);
         context.strokeStyle = color;
         context.lineWidth   = border;
         context.strokeRect(l, t, w, h);
@@ -294,7 +288,7 @@ function setupBuiltInComponents () {
       // clear Everything
       HTMLCanvas.width = this.getProperty("Width").getValue();
       HTMLCanvas.height = this.getProperty("Height").getValue();
-      context.clearRect(0,0,context.canvas.width, context.canvas.height);
+      context.clearRect(0,0,context.canvas.width,context.canvas.height);
       prototype.draw(context);
     }
   });
@@ -339,18 +333,6 @@ function setupBuiltInComponents () {
       context.fillStyle = this.getProperty("Color").getValue();
       context.fillText(text ,posX ,posY);
     },
-    mousemove: function (e) {
-      var left   = this.getProperty("Left").getValue();
-      var top    = this.getProperty("Top").getValue();
-      var width  = this.getProperty("Width").getValue();
-      var height = this.getProperty("Height").getValue();
-      var over   = e.mouseX >= left && e.mouseX  <= left + width 
-                && e.mouseY >= top  && e.mouseY  <= top + height;
-
-      if(over) {
-        this.setProperty("BackgroundColor", "red");
-      }
-    }
   })
 }
 
@@ -384,6 +366,14 @@ function createHTMLCanvas(selector) {
       };
     }
 
+    HTMLCanvas.addEventListener('click', function (e) {
+      traverseTree(tree, function (component) {
+        if(typeof component.click === 'function') {
+          component.click(getMousePos(HTMLCanvas, e));
+        }
+      });
+    });
+
     HTMLCanvas.addEventListener('mousemove', function (e) {
       traverseTree(tree, function (component) {
         if(typeof component.mousemove === 'function') {
@@ -400,7 +390,7 @@ setupBuiltInValidators();
 setupBuiltInComponents();
 
 function reset () {
-  tree.children = [];
+  tree = undefined;
 }
 
 export default {

@@ -238,6 +238,10 @@ function setDbInfo(provider, sourceStr) {
   source = sourceStr;
 }
 
+function hasSchemaDefinition() {
+  return (Database.Provider !== null);
+}
+
 setupDefaultProviders();
 
 export default {
@@ -257,5 +261,6 @@ export default {
   buildSchema: buildSchema,
   downloadForm: downloadForm,
   setResourceProvider: setResourceProvider,
+  hasSchemaDefinition: hasSchemaDefinition,
   getSchema: function () {return schema;}
 }

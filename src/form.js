@@ -1,5 +1,5 @@
 let tree = undefined;
-const templates = [];
+let templates = [];
 
 function traverseTree (Template, cb) {
   cb(Template);
@@ -28,20 +28,16 @@ function getProperty (name) {
 function appendChild (template) {
   if( (typeof template !== 'object') || (template.type !== 'template') )
     throw new Error("Not a valid template");
-
   this.children.push(template);
 }
 
-
 function getResource (name) {
-
   const data = this.data;
   debugger;
   if(data.name === name)
     return data.data;
 
   throw new Error("no such resource '" + name + "'.");
-
 }
 
 function createTemplate () {
@@ -81,7 +77,7 @@ function setTree(rootTemplate) {
 }
 
 function getTree () {
-  return tree || undefined;
+  return tree;
 }
 
 function getTemplateList () {
@@ -97,6 +93,14 @@ function findTemplate(name) {
   //throw new Error("No such template " + name);
 }
 
+function reset () {
+  //tree = undefined;
+  if(tree) {
+    tree.children = [];
+    templates = [];
+  }
+}
+
 export default {
   createTemplate: createTemplate,
   addTemplate: addTemplate,
@@ -104,5 +108,6 @@ export default {
   getTree: getTree,
   traverseTree: traverseTree,
   getTemplateList: getTemplateList,
-  findTemplate: findTemplate
+  findTemplate: findTemplate,
+  reset: reset
 }

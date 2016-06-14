@@ -204,20 +204,21 @@ function parse() {
   const headerTemplate = parseTemplate();
   map.setStartUpFormName(headerTemplate.StartUpForm.value.value);
   const dbTemplate = parseTemplate();
-  const dbProvider = dbTemplate.Database.value.value[0].right.value;
-  const dbSource = dbTemplate.Database.value.value[1].right.value;
+  if(dbTemplate.Database) {
+    const dbProvider = dbTemplate.Database.value.value[0].right.value;
+    const dbSource = dbTemplate.Database.value.value[1].right.value;
+    map.setDatabaseProvider(dbProvider);
+    map.setDatabaseSource(dbSource);
+    map.setDbInfo(dbProvider, dbSource);
 
-  map.setDatabaseProvider(dbProvider);
-  map.setDatabaseSource(dbSource);
+    const schema = {};
+    while(!ts.eof()) {
+      const table = parseTemplate();
+      schema[table.name] = table.relations;
+    }
+    map.setVismSchema(schema);
 
-  map.setDbInfo(dbProvider, dbSource);
-  
-  const schema = {};
-  while(!ts.eof()) {
-    const table = parseTemplate();
-    schema[table.name] = table.relations;
   }
-  map.setVismSchema(schema);
 }
 
 function init (config) {

@@ -8,22 +8,45 @@ import form from './form';
 import configValidator from './configValidator';
 import visMapValidator from './visMapValidator';
 import browserValidator from './browserValidator';
+import toolBox from './toolBox';
 
 let initialVismfile = null;
 let visfile = null;
 let resourceProvider = null;
-let dbConnector = null;
 let selector = null;
-let visMap = null;
-let oData = null;
+let role = "endUser";
+let screen = document.createElement('div');
+screen.id = "screen";
+
 const events = {};
 
+function saveVismFile (filename, stream) {
+
+  resourceProvider('vismfile', {
+    filename:initialVismfile,
+    method:'POST',
+    content: stream
+  }).then(function (result) {
+    reset();
+    run();
+  }).catch(function (err) {
+    throw new Error('failed to write the vismfile', err);
+  });
+}
+
 function run () {
+
+    selector.appendChild(screen);
+    toolBox.create(selector);
+    toolBox.setSaveVismfileMethod(saveVismFile);
+
+
     resourceProvider('vismfile', {
       filename:initialVismfile, 
       method:'GET'
     }).then(function(stream) {
 
+      toolBox.renderVismfile(stream, initialVismfile, role);
       const vismfileCallback = events['vismFileLoaded'];
       if(typeof vismfileCallback === 'function')
         vismfileCallback(stream);
@@ -32,116 +55,137 @@ function run () {
 
       vismParser.init({
         tokenizer: tokenizer(streamReader(stream)),
-        map:map       
+        map:map
       });
 
       vismParser.parse();
-
-      map.buildSchema().then(function () {
-        return map.downloadForm();
-      }).then(function (startupformStr) {
-
-        const visfileCallback = events['visFileLoaded'];
-        if(typeof visfileCallback === 'function')
-          visfileCallback(startupformStr);
-
-        visParser.init({
-          tokenizer: tokenizer(streamReader(startupformStr)), 
-          canvas: canvas, 
-          form: form
+      if(map.hasSchemaDefinition()) {
+        map.buildSchema().then(function () {
+          openVisForm(map.downloadForm());
         });
+      } else {
+        openVisForm(map.downloadForm());
+      }
 
-        visParser.parse();
+      function openVisForm(promise) {
 
-        // preevaluate rows in order to build the template Tree
-        const templateList = form.getTemplateList();
+        promise.then(function (startupformStr) {
 
-        for(let name in templateList) {
-          const template = templateList[name];
-          if(template.rows) {
-            const env = {form: form, map: map, template: template, property: 'Rows'};
-            preEvaluate(template.rows, env);
-          } else {
-            form.getTree().appendChild(template);
+          toolBox.renderVisfile(startupformStr, map.getVisfileName(), role);
+          const visfileCallback = events['visFileLoaded'];
+          if(typeof visfileCallback === 'function')
+            visfileCallback(startupformStr);
+
+          visParser.init({
+            tokenizer: tokenizer(streamReader(startupformStr)), 
+            canvas: canvas, 
+            form: form
+          });
+
+          visParser.parse();
+
+          // preevaluate rows in order to build the template Tree
+          const templateList = form.getTemplateList();
+
+          for(let name in templateList) {
+            const template = templateList[name];
+            if(template.rows) {
+              const env = {form: form, map: map, template: template, property: 'Rows'};
+              preEvaluate(template.rows, env);
+            } else {
+              form.getTree().appendChild(template);
+            }
           }
-        }
 
-        // preEvaluate all other properties
-        for(let idx in templateList) {
-          const template = templateList[idx];
-          for(let property in template.properties) {
-            const env = {form: form, map: map, template: template, property: property};
-            preEvaluate(template.properties[property], env);
+          // preEvaluate all other properties
+          for(let idx in templateList) {
+            const template = templateList[idx];
+            for(let property in template.properties) {
+              const env = {form: form, map: map, template: template, property: property};
+              preEvaluate(template.properties[property], env);
+            }
           }
-        }
 
-        var dataQueue = [];
+          var dataQueue = [];
 
-        for(let i in templateList) {
-          if(templateList[i].query) {
-            dataQueue.push(resourceProvider('query', templateList[i]));
+          for(let i in templateList) {
+            if(templateList[i].query) {
+              dataQueue.push(resourceProvider('query', templateList[i]));
+            }
           }
-        }
 
-      return Promise.all(dataQueue);
+        return Promise.all(dataQueue);
 
-      }).then(function(data) {
-        const templateList = form.getTemplateList();
-        canvas.createHTMLCanvas(selector);
+        }).then(function(data) {
+          const templateList = form.getTemplateList();
+          canvas.createHTMLCanvas(screen);
 
-        function render(template) {
-          if(template.rows) {
-            const env = {form: form, map: map, template: template, property: 'Rows'};
-            const instances = evaluate(template.rows, env);
-            env.instances = instances;
-            if(instances) {
-              for(let i=0, len=instances.length; i<len; i++) {
-                const component = canvas.createComponent(template.componentType);
-                template.index=i;
-                template.instance = instances[i];
-                for(let propertyName in template.properties) {
-                  const property = template.properties[propertyName];
-                  env.property = propertyName;
-                  const r = evaluate(property, env);
-                  component.setProperty(propertyName, r);
-                }
-                canvas.getTree().appendChild(component);
-                if(template.children) {
-                  for(let i=0, len=template.children.length; i<len; i++) {
-                    render(template.children[i]);
+          function render(template) {
+            if(template.rows) {
+              const env = {form: form, map: map, template: template, property: 'Rows'};
+              const instances = evaluate(template.rows, env);
+              env.instances = instances;
+              if(instances) {
+                for(let i=0, len=instances.length; i<len; i++) {
+                  const component = canvas.createComponent(template.componentType);
+                  template.index=i;
+                  template.instance = instances[i];
+                  for(let propertyName in template.properties) {
+                    const property = template.properties[propertyName];
+                    env.property = propertyName;
+                    const r = evaluate(property, env);
+                    component.setProperty(propertyName, r);
+                  }
+                  canvas.getTree().appendChild(component);
+                  if(template.children) {
+                    for(let i=0, len=template.children.length; i<len; i++) {
+                      render(template.children[i]);
+                    }
                   }
                 }
               }
-            }
-          } else {
-            const tmpCanvas = canvas;
-            const component = (template.componentType === 'CANVAS') ? canvas.getTree() : canvas.createComponent(template.componentType);
-            const env = {form:form, template: template};
-            for(let propName in template.properties) {
-              env.property = propName;
-              const v = evaluate(template.properties[propName], env);
-              component.setProperty(propName, v);
-            }
-            if(template.componentType !== 'CANVAS')
-              canvas.getTree().appendChild(component);
-            if(template.children) {
-              for(let i=0, len=template.children.length; i<len; i++) {
-                render(template.children[i]);
+            } else {
+              const tmpCanvas = canvas;
+              const component = (template.componentType === 'CANVAS') ? canvas.getTree() : canvas.createComponent(template.componentType);
+              const env = {form:form, template: template};
+              for(let propName in template.properties) {
+                env.property = propName;
+                const v = evaluate(template.properties[propName], env);
+                component.setProperty(propName, v);
+              }
+              if(template.componentType !== 'CANVAS')
+                canvas.getTree().appendChild(component);
+              if(template.children) {
+                for(let i=0, len=template.children.length; i<len; i++) {
+                  render(template.children[i]);
+                }
               }
             }
           }
-        }
-        render(form.getTree());
-      }).catch(function(err) {
-        const pre = document.createElement('pre');
-        pre.appendChild(document.createTextNode("Error: " + err.message));
-        pre.appendChild(document.createElement("hr"));
-        pre.appendChild(document.createTextNode("stack trace:"));
-        pre.appendChild(document.createElement("br"));
-        pre.appendChild(document.createTextNode(err.stack));
-        selector.appendChild(pre);
-        throw (err);
-      })
+          const tree = form.getTree();
+          render(form.getTree());
+        }).catch(function(err) {
+          var homeBtn = canvas.createComponent("NavBtn");
+          var errorBox = canvas.createComponent("TextBox");
+          canvas.getTree().appendChild(errorBox);
+          canvas.getTree().appendChild(homeBtn);
+
+          homeBtn.setProperty("Top", 10);
+          homeBtn.setProperty("Text", "Home");
+          homeBtn.setProperty("GoTo", "/");
+
+          errorBox.setProperty("ZIndex", 0);
+          errorBox.setProperty("Top", 100);
+          errorBox.setProperty("Width", 200);
+          errorBox.setProperty("Text", err.message);
+          errorBox.setProperty("BackgroundColor", "DarkRed");
+          errorBox.setProperty("Color", "White");
+          screen.appendChild(document.createTextNode("Error: " + err.message));
+          console.log(err);
+        })
+      }
+    }).catch(function(err) {
+        console.log(err);
     });
   }
 
@@ -279,6 +323,10 @@ function evaluate(exp, env) {
         if(typeof left === 'number' && typeof right === 'number')
           return num(left) + num(right);
         return left + "" + right;
+      case '-' :
+        if(typeof left === 'number' && typeof right === 'number')
+          return num(left) - num(right);
+
       case '<':
         return null;
       case '>':
@@ -500,8 +548,10 @@ function preEvaluate(exp, env) {
 }
 
 function reset () {
+  visfile = null;
+
   //map.reset();
-  //form.reset();
+  form.reset();
   canvas.reset();
 }
 
@@ -518,15 +568,40 @@ window.uvis = {
       reset();
       run();
     }).catch(function (err) {
-      throw new Error("failed to write visfile", err);
+      throw new Error('failed to write the visfile', err);
     });
   },
+  saveVismfile: function (stream) {
+    resourceProvider('vismfile', {
+      filename:initialVismfile,
+      method:'POST',
+      content: stream
+    }).then(function (result) {
+      reset();
+      run();
+    }).catch(function (err) {
+      throw new Error('failed to write the vismfile', err);
+    });
+  },
+  openVismFile: function (filename) {
+    initialVismfile = filename;
+    reset();
+    run();
+  },
+  setRole: function (roleType) {
+    role = roleType;
+  },
+  emit: function (name, args) {
+    if(events[name])
+      events[name](args);
+  },
+  getValidator: canvas.getValidator,
+  registerComponent: canvas.registerComponent,
   config: function (userConfig) {
     browserValidator();
     const validConfig = configValidator(userConfig);
     initialVismfile   = validConfig.initialVismfile;
     resourceProvider  = validConfig.resourceProvider;
-    dbConnector       = validConfig.databaseConnector;
     selector          = validConfig.selector;
   },
   getQueryTranslator: function (queryModel) {
