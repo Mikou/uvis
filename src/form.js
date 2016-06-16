@@ -33,7 +33,6 @@ function appendChild (template) {
 
 function getResource (name) {
   const data = this.data;
-  debugger;
   if(data.name === name)
     return data.data;
 

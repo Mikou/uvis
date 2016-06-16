@@ -4,8 +4,6 @@ let selectedProvider = "";
 let source = "";
 
 let schema = undefined;
-let schemaParser = undefined;
-let schemaMapper = undefined;
 let resourceProvider = undefined;
 let vismSchema = null;
 let startUpFormName = null;
@@ -34,7 +32,10 @@ function buildSchema () {
     throw new Error('Resource provider missing');
 
   return new Promise(function (resolve, reject) {
-    resourceProvider('dataSchema', Database.Source).then(function (schemaStr) {
+    resourceProvider('dataSchema', {
+        method:'GET',
+        source: Database.Source,
+      }).then(function (schemaStr) {
       const dbProvider = getProvider(selectedProvider);
       const dbSchema = dbProvider.parser(schemaStr);
       schema = dbProvider.mapper(vismSchema, dbSchema);
@@ -142,7 +143,7 @@ function setupDefaultProviders () {
           }
           resourceSchema.primaryKey = extSchemaResource.primaryKey;
           const foreignKeys = [];
-          // build relations among resources relying on the internal schema
+          // build relations between resources relying on the internal schema
           for(let name in sysSchemaResource) {
             const foreignKey = {};
             foreignKey.fields = sysSchemaResource[name].on.from.fields;
@@ -237,6 +238,9 @@ function setDbInfo(provider, sourceStr) {
   selectedProvider = provider;
   source = sourceStr;
 }
+function getDbInfo() {
+  return Database;
+}
 
 function hasSchemaDefinition() {
   return (Database.Provider !== null);
@@ -249,11 +253,10 @@ export default {
   registerProvider: registerProvider,
   getProvider: getProvider,
   setDbInfo: setDbInfo,
+  getDbInfo: getDbInfo,
   getSelectedDbProvider: getSelectedDbProvider,
   setStartUpFormName: setStartUpFormName,
   getVisfileName: getVisfileName,
-  //setSchemaParser: setSchemaParser,
-  //setSchemaMapper: setSchemaMapper,
   setDatabaseProvider: setDbProvider,
   setDatabaseSource: setDbSource,
   setVismSchema: setVismSchema,

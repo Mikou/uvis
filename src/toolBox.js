@@ -1,8 +1,10 @@
+let visfile, visfileName, vismfile, vismfileName;
+let role;
 let saveVismfile = null;
 const $toolBox = document.createElement('div');
 $toolBox.id = "toolBox";
 
-function renderVismfile (fileContent, filename, role) {
+function renderVismfile (filename, stream, role) {
   const $header = document.createElement('h1');
   const $filename = document.createElement('pre');
   const $textArea = document.createElement('textArea');
@@ -11,13 +13,13 @@ function renderVismfile (fileContent, filename, role) {
 
   $header.innerHTML = "VismFile";
   $filename.innerHTML = 'filename: '+ filename;
-  $textArea.value = fileContent;
+  $textArea.value = stream;
 
   $toolBox.appendChild($header);
   $toolBox.appendChild($filename);
   $toolBox.appendChild($textArea);
 
-  if(role === 'developer') {
+  /*if(role === 'developer') {
     const $save = document.createElement('input');
     $save.type = "button";
     $save.value = "save " + filename;
@@ -31,10 +33,10 @@ function renderVismfile (fileContent, filename, role) {
     $note.className = "note";
     $note.innerHTML = "You do not have the permission to save this file";
     $toolBox.appendChild($note);
-  }
+  }*/
 }
 
-function renderVisfile (fileContent, filename, role) {
+function renderVisfile (filename, stream, role) {
   const $header = document.createElement('h1');
   const $filename = document.createElement('pre');
   const $textArea = document.createElement('textArea');
@@ -43,18 +45,18 @@ function renderVisfile (fileContent, filename, role) {
 
   $header.innerHTML = "VisFile";
   $filename.innerHTML = 'filename: '+ filename;
-  $textArea.value = fileContent;
+  $textArea.value = stream;
 
   $toolBox.appendChild($header);
   $toolBox.appendChild($filename);
   $toolBox.appendChild($textArea);
 
-  if(role === 'developer') {
+  if(role === 'designer') {
     const $save = document.createElement('input');
     $save.type = "button";
     $save.value = "save " + filename;
     $save.addEventListener('click', function () {
-      saveVismfile(filename, $textArea.value);
+      saveVisfile(filename, $textArea.value);
     });
     $toolBox.appendChild(document.createElement('br'));
     $toolBox.appendChild($save);
@@ -75,9 +77,34 @@ function setSaveVismfileMethod (fn) {
   saveVismfile = fn;
 }
 
+function setVisfile (filename, stream) {
+  visfileName = filename;
+  visfile = stream;
+}
+
+function setVismfile (filename, stream) {
+  vismfileName = filename;
+  vismfile = stream;
+}
+
+function setRole(type) {
+  role = type;
+}
+
+function render() {
+  console.log("Render toolbox");
+  $toolBox.innerHTML = "";
+  renderVismfile(vismfileName, vismfile, role);
+  renderVisfile(visfileName, visfile, role);
+}
+
 export default {
   create: create,
   renderVismfile: renderVismfile,
   renderVisfile: renderVisfile,
+  setVisfile: setVisfile,
+  setRole: setRole,
+  setVismfile: setVismfile,
+  render: render,
   setSaveVismfileMethod: setSaveVismfileMethod
 }

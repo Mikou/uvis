@@ -46,8 +46,10 @@ function setType(name, params) {
 
 function traverseTree (Component, cb) {
   cb(Component);
-  for(var child in Component.children){
-    traverseTree(Component.children[child], cb);
+  if(Component) {
+    for(var child in Component.children){
+      traverseTree(Component.children[child], cb);
+    }
   }
 }
 
@@ -302,18 +304,18 @@ function setupBuiltInComponents () {
       FontFamily:    {initialValue:'Arial', validator: getValidator('string')}
     },
     draw: function(context) {
-      var prototype = Object.getPrototypeOf(this);
+      const prototype = Object.getPrototypeOf(this);
 
-      var posX = this.getProperty("Left").getValue();
-      var posY = (this.getProperty("Top").getValue() 
-               + this.getProperty("Height").getValue() / 2) 
-               + (this.getProperty("FontSize").getValue() / 2.5);
-      var font = this.getProperty("FontSize").getValue() 
-               + "px " 
-               + this.getProperty("FontFamily").getValue();
-      var text = this.getProperty("Text").getValue();
-      var align = this.getProperty("TextAlignment").getValue().toUpperCase();
-      var textWidth = context.measureText(text).width;
+      let posX = this.getProperty("Left").getValue();
+      const posY = (this.getProperty("Top").getValue() 
+                 + this.getProperty("Height").getValue() / 2) 
+                 + (this.getProperty("FontSize").getValue() / 2.5);
+      const font = this.getProperty("FontSize").getValue() 
+                 + "px " 
+                 + this.getProperty("FontFamily").getValue();
+      const text = this.getProperty("Text").getValue();
+      const align = this.getProperty("TextAlignment").getValue().toUpperCase();
+      const textWidth = context.measureText(text).width;
 
       if(align === 'RIGHT') {
         posX = this.getProperty("Left").getValue() 
@@ -333,7 +335,11 @@ function setupBuiltInComponents () {
       context.fillStyle = this.getProperty("Color").getValue();
       context.fillText(text ,posX ,posY);
     },
-  })
+    measureText: function () {
+      const text = this.getProperty("Text").getValue();
+      return context.measureText(text).width;
+    }
+  });
 }
 
 function getTree () {
@@ -343,8 +349,8 @@ function getTree () {
 
     tree.getProperty("Top").setValue(0);
     tree.getProperty("Left").setValue(0);
-    tree.getProperty("Width").setValue(640);
-    tree.getProperty("Height").setValue(480);
+    tree.getProperty("Width").setValue(360);
+    tree.getProperty("Height").setValue(200);
     tree.getProperty("BackgroundColor").setValue("LightGrey");
   }
 
@@ -376,8 +382,10 @@ function createHTMLCanvas(selector) {
 
     HTMLCanvas.addEventListener('mousemove', function (e) {
       traverseTree(tree, function (component) {
-        if(typeof component.mousemove === 'function') {
-          component.mousemove(getMousePos(HTMLCanvas, e));
+        if(component) {
+          if(typeof component.mousemove === 'function') {
+            component.mousemove(getMousePos(HTMLCanvas, e));
+          }
         }
       });
     });

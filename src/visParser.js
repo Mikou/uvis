@@ -138,8 +138,8 @@ function parseProperty () {
 // Default form header
 const DEFAULT_FORM_HEADER = {
   Name  : 'fileName.vis',
-  Width : {'type': 'formula', value: {type:'num', value: '640'}},
-  Height: {'type': 'formula', value: {type:'num', value: '480'}}
+  Width : {'type': 'formula', value: {type:'num', value: '360'}},
+  Height: {'type': 'formula', value: {type:'num', value: '400'}}
 };
 
 // Assuming header keys are constants
