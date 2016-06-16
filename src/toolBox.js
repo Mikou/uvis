@@ -92,7 +92,6 @@ function setRole(type) {
 }
 
 function render() {
-  console.log("Render toolbox");
   $toolBox.innerHTML = "";
   renderVismfile(vismfileName, vismfile, role);
   renderVisfile(visfileName, visfile, role);

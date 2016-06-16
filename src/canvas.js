@@ -65,10 +65,10 @@ function createProperty (name, params) {
 
       return this.initialValue;
     },
-    setValue: function (value) {
+    setValue: function (value, is_reflow) {
       this.validator(value);
       this.computedValue = value;
-      reflow(context);
+      if(is_reflow) reflow(context);
     },
     resetValue: function () {
       this.computedValue = undefined;
@@ -241,8 +241,10 @@ function setupBuiltInComponents () {
       throw new Error("property " + name + " does not exist.");
     },
     setProperty: function (name, value) {
-      var property = this.getProperty(name);
-      property.setValue(value);
+      const property = this.getProperty(name);
+      let reflow = false;
+      if(this.parent) reflow = true;
+      property.setValue(value, reflow);
       return property;
     },
     resetProperty: function (name) {
@@ -250,6 +252,7 @@ function setupBuiltInComponents () {
       property.resetValue();
     },
     appendChild: function (Component) {
+      Component.parent=this;
       this.children.push(Component);
       reflow(context);
     }
@@ -347,11 +350,11 @@ function getTree () {
   if(typeof tree === 'undefined') {
     tree = createComponent('Canvas', true);
 
-    tree.getProperty("Top").setValue(0);
-    tree.getProperty("Left").setValue(0);
-    tree.getProperty("Width").setValue(360);
-    tree.getProperty("Height").setValue(200);
-    tree.getProperty("BackgroundColor").setValue("LightGrey");
+    tree.getProperty("Top").setValue(0, false);
+    tree.getProperty("Left").setValue(0, false);
+    tree.getProperty("Width").setValue(360, false);
+    tree.getProperty("Height").setValue(200, false);
+    tree.getProperty("BackgroundColor").setValue("LightGrey", false);
   }
 
   tree.draw(context, HTMLCanvas);

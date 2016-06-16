@@ -336,8 +336,7 @@ function evaluate(exp, env) {
 
   switch(exp.type) {
     case 'formula':
-      const value = evaluate(exp.value, env);
-      return value;
+      return evaluate(exp.value, env);
     case 'binary':
       const left = evaluate(exp.left, env);
       const right = evaluate(exp.right, env);
