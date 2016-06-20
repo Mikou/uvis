@@ -12,10 +12,6 @@ function setTemplateName (name) {
   this.name = name;
 }
 
-function setFormulaForProperty(propName, formula) {
-  this.properties[propName] = formula;
-}
-
 function setProperty(name, formula) {
   this.properties[name] = formula;
 }
@@ -45,7 +41,6 @@ function createTemplate () {
     getProperty: getProperty,
     getResource: getResource,
     appendChild: appendChild,
-    setFormulaForProperty: setFormulaForProperty
   }
   
   const template = Object.create(templateProto, {
@@ -105,7 +100,6 @@ export default {
   addTemplate: addTemplate,
   setTree: setTree,
   getTree: getTree,
-  traverseTree: traverseTree,
   getTemplateList: getTemplateList,
   findTemplate: findTemplate,
   reset: reset
