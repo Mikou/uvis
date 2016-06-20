@@ -80,7 +80,6 @@ function openVisfile () {
 
 function getDataInstances(visStream) {
   return new Promise( function (resolve, reject) {
-    //toolBox.renderVisfile(visStream, map.getVisfileName(), role);
     visParser.init({
       tokenizer: tokenizer(streamReader(visStream)), 
       canvas: canvas, 
@@ -454,6 +453,7 @@ function preEvaluate(exp, env) {
       return exp.value;
 
     case 'id':
+      if(exp.value === 'index') return null;
       if(exp.value === 'Map') return function (pathReader) {
         const separator = preEvaluate(pathReader.next(), env);
         const map = env.map;
@@ -573,7 +573,7 @@ window.uvis = {
     reset(); 
     const startEventHandler = events['renderingStart'];
     if(typeof startEventHandler === 'function')
-    startEventHandler();
+      startEventHandler();
 
     openVisfile().then(function (visStream) {
 
