@@ -157,14 +157,14 @@ function generateScreen(dataInstances) {
       }
     } else {
       const tmpCanvas = canvas;
-      const component = (template.componentType === 'CANVAS') ? canvas.getTree() : canvas.createComponent(template.componentType);
+      const component = (template.componentType === 'Canvas') ? canvas.getTree() : canvas.createComponent(template.componentType);
       const env = {form:form, template: template};
       for(let propName in template.properties) {
         env.property = propName;
         const v = evaluate(template.properties[propName], env);
         component.setProperty(propName, v);
       }
-      if(template.componentType !== 'CANVAS')
+      if(template.componentType !== 'Canvas')
         canvas.getTree().appendChild(component);
       if(template.children) {
         for(let i=0, len=template.children.length; i<len; i++) {
@@ -609,6 +609,7 @@ window.uvis = {
       errorBox.setProperty("Width", Math.round(errorBox.measureText()) + 20);
       errorBox.setProperty("BackgroundColor", "DarkRed");
       errorBox.setProperty("Color", "White");
+      console.log(err);
     });
   },
   setRole: function (roleType) {

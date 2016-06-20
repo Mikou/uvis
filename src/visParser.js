@@ -7,9 +7,9 @@ var current = null;
 
 const PRECEDENCE = {
   "WHERE": 1,
-  "=": 2, ":": 2, "&": 2,
-  "-<": 3, ">-": 3,
-  "<": 7, ">": 7, "<=": 7, ">=": 7, "==": 7, "!=": 7,
+  "-<": 2, ">-": 2,
+  "=": 3, ":": 3, "&": 3,
+  "<": 7, ">": 7, //"<=": 7, ">=": 7, "==": 7, "!=": 7,
   "+": 10, "-": 10,
   "*": 20, "/": 20, "%": 20,
 };
@@ -57,10 +57,7 @@ function parsePath(expr) {
   } else if(expr.type == 'punc') {
     if(tok.type=='id') path.next = parsePath(ts.next());
   }
-  
   return path;
-
-  //throw new Error("Not yet implemented");
 }
 
 function maybePath(expr) {
@@ -68,20 +65,20 @@ function maybePath(expr) {
 }
 
 // extends an expression as much as possible to the right
-function maybe_binary(left, my_prec) {
+function maybeBinary(left, myPrec) {
   var tok = isOp();
   if (tok) {
-    var his_prec = PRECEDENCE[tok.value];
-    if (his_prec > my_prec) {
+    var hisPrec = PRECEDENCE[tok.value];
+    if (hisPrec > myPrec) {
       ts.next();
-      var right = maybe_binary(maybePath(parseAtom()), his_prec);
+      var right = maybeBinary(maybePath(parseAtom()), hisPrec);
 
-      return maybe_binary({
+      return maybeBinary({
         type     : "binary",
         operator : tok.value,
         left     : left,
-        right    : right//maybe_binary(parseAtom(), his_prec)
-      }, my_prec);
+        right    : right
+      }, myPrec);
     }
   }
   return left;
@@ -106,7 +103,6 @@ function parseAtom() {
     return tok;
 
   ts.croak("Unexpected token " + JSON.stringify(ts.peek()));
-
 }
 
 function skipSeparator() {
@@ -123,7 +119,7 @@ function skipEOL() {
 
 function parseFormula () {
   while(!ts.eof() && ts.peek().type !== 'EOL' ){
-    return {type:'formula', value: maybe_binary(maybePath(parseAtom()), 0)};
+    return {type:'formula', value: maybeBinary(maybePath(parseAtom()), 0)};
   }
 }
 
@@ -133,22 +129,6 @@ function parseProperty () {
             ts.next(); // skip semicolon
   var formula = parseFormula();
   return {key: key.value, formula: formula};
-}
-
-// Default form header
-const DEFAULT_FORM_HEADER = {
-  Name  : 'fileName.vis',
-  Width : {'type': 'formula', value: {type:'num', value: '360'}},
-  Height: {'type': 'formula', value: {type:'num', value: '400'}}
-};
-
-// Assuming header keys are constants
-const HEADER_KEYS = ['Name', 'Width', 'Height'];
-
-function isHeaderKey (name) {
-  for(var k in HEADER_KEYS)
-    if(k===name) return true;
-  return false;
 }
 
 function parseTemplate () {
@@ -163,55 +143,45 @@ function parseTemplate () {
   }
   if(!ts.eof() && ts.peek().type === 'separator') skipSeparator();
 
-
-  // Try to determinate the component type
   for(var key in tplDefinition)
     if (typeof canvas.inspect(false, key) !== 'undefined')
       template.componentType = key;
-      //template.setComponentType(key);
-
-
-  // when we look at the first template
   if(++tplCount === 1) {
-    // is it a form header ? (No component type is addressed)
     if(template.componentType === null) {
-
-      template.componentType = 'CANVAS';
-      template.name = (tplDefinition.hasOwnProperty('Name')) ? tplDefinition.Name : DEFAULT_FORM_HEADER.Name;
-      template.setProperty("Width",  tplDefinition.hasOwnProperty("Width")  ? tplDefinition.Width  : DEFAULT_FORM_HEADER.Width);
-      template.setProperty("Height", tplDefinition.hasOwnProperty("Height") ? tplDefinition.Height : DEFAULT_FORM_HEADER.Height);
-
-      form.setTree(template);
-
+      template.componentType = 'Canvas';
+      if(tplDefinition.hasOwnProperty('Name')) {
+        template.name = tplDefinition.Name;
+        delete tplDefinition['Name'];
+      } else {
+        template.name = 'visfilename.vis';
+      }
+      buildTemplate(template, tplDefinition);
       return;
     } else {
 
       var rootTpl = form.createTemplate();
-      rootTpl.componentType = 'CANVAS';
-      rootTpl.name = DEFAULT_FORM_HEADER.Name;
-      rootTpl.setProperty("Width", DEFAULT_FORM_HEADER.Width);
-      rootTpl.setProperty("Height", DEFAULT_FORM_HEADER.Height);
+      rootTpl.componentType = 'Canvas';
+      rootTpl.name = 'visfilename.vis'
 
       form.setTree(rootTpl);
 
-      buildTemplate(tplDefinition);
+      buildTemplate(template, tplDefinition);
       return;
     }
 
   } else {
     if(template.componentType === null)
       throw new Error("The Template number " +tplCount+ " does not define a valid Component Type");
-
-    buildTemplate(tplDefinition);
+    buildTemplate(template, tplDefinition);
     return;
   }
 
-  function buildTemplate(tplDefinition) {
+  function buildTemplate(template, tplDefinition) {
     // when the component type is known, we can check the keys against the component type
     for(var key in tplDefinition) {
       //if(canvas.getPropertyForComponentType(key, template.componentType)) {
-      if(canvas.inspect(false, template.componentType, key)) {
-        template.setFormulaForProperty(key, tplDefinition[key]);
+      if(canvas.inspect(template.componentType === 'Canvas', template.componentType, key)) {
+        template.properties[key] = tplDefinition[key];
       } else {
         if(key === template.componentType) {
           template.name = tplDefinition[key].value.value;
@@ -224,11 +194,11 @@ function parseTemplate () {
         }
       }
     }
-    form.addTemplate(template);
+    (template.componentType === 'Canvas') ? form.setTree(template) : form.addTemplate(template);
   }
 }
 
-function parseVisformTemplate () {
+function parseForm () {
   while(!ts.eof()) {
     parseTemplate();
   }
@@ -244,6 +214,6 @@ function init (config) {
 
 module.exports = {
   init: init,
-  parse: parseVisformTemplate
+  parse: parseForm
 };
 
