@@ -341,8 +341,8 @@ function evaluate(exp, env) {
       return applyOp(exp.operator, left, right);
     case 'path':
       const pathReader = createPathReader(exp);
-      const router = evaluate(pathReader.next(), env);
-      return router(pathReader, env);
+      const walkTo = evaluate(pathReader.next(), env);
+      return walkTo(pathReader, env);
     case 'num':
     case 'str':
       return exp.value;
@@ -357,6 +357,91 @@ function evaluate(exp, env) {
 }
 
 function preEvaluate(exp, env) {
+  function bindRelation (exp, env) {
+    if(env.property === 'Rows' && env.template.parent == null) {
+      if(env.template.query) return;
+      env.template.query = {
+        type: 'query',
+        name: relation.name,
+        primaryKey: relation.primaryKey,
+        foreignKeys: relation.foreignKeys,
+        query: {},
+        properties: [],
+        expand:null,
+        findRecordSet: findRecordSet
+      }
+      env.template.updated = true;
+      env.form.getTree().appendChild(env.template);
+    }
+  }
+
+  function walkToForm (pathReader, env) {
+    const separator = preEvaluate(pathReader.next(), env);
+    const form = env.form;
+
+    if(env.property === 'Rows') {
+
+        const parent = form.findTemplate(preEvaluate(pathReader.next()), env);
+        if(!parent.query) {
+          if(parent.visited === true)
+            throw new Error("Cyclical parent reference !");
+          parent.visited = true;
+          const tmpEnv = {form: env.form, map: env.map, template: parent, property: 'Rows'}
+          preEvaluate(parent.rows, tmpEnv);
+        }
+        return parent;
+
+    } else {
+
+      if(pathReader.hasNext()) {
+        return form.findTemplate(preEvaluate(pathReader.next(), env));
+      } else {
+        preEvaluate(pathReader.next(), env); // jump over separator
+        const parentRef = preEvaluate(pathReader.next(), env);
+        const parent = form.findTemplate(parentRef);
+        parent.appendChild(env.template);
+      }
+    }
+  }
+
+  function walkToMap (pathReader, env) {
+    const separator = preEvaluate(pathReader.next(), env);
+    const map = env.map;
+    const template = env.template;
+    const resourceName = preEvaluate(pathReader.next(), env);
+    const resource = map.getEntity(resourceName);
+    if(env.property === 'Rows') {
+      if(pathReader.hasNext()) {
+        pathReader.next(); // skip separator
+        //if(resourceName === 'activity');
+        return { type: 'filter',
+          resource: resourceName,
+          field: preEvaluate(pathReader.next(), env)
+        };
+        //return {type:'entityProperty', value:preEvaluate(pathReader.next(), env)};
+      } else {
+        return resource;
+      }
+    } else {
+      pathReader.next() // skip separator
+      const propertyName = preEvaluate(pathReader.next(), env);
+      const field = resource.getField(propertyName);
+      let query = null;
+      if(env.template.parent) {
+        query = env.template.parent.query;
+      } else {
+        query = env.template.query;
+      }
+      query = query.findRecordSet(resourceName);
+      query.properties.push(field);
+    }
+  }
+
+  function walkToParent (pathReader, env) {
+    const separator = preEvaluate(pathReader.next(), env);
+    const property = preEvaluate(pathReader.next(), env);
+    return env.template.parent.getProperty(property);
+  }
 
   function applyOp(op, left, right) {
     if(op === '-<') {
@@ -421,114 +506,34 @@ function preEvaluate(exp, env) {
   switch(exp.type) {
     case 'formula':
       const relation = preEvaluate(exp.value, env);
-      if(env.property === 'Rows' && env.template.parent == null) {
-        if(env.template.query) return;
-        env.template.query = {
-          type: 'query',
-          name: relation.name,
-          primaryKey: relation.primaryKey,
-          foreignKeys: relation.foreignKeys,
-          query: {},
-          properties: [],
-          expand:null,
-          findRecordSet: findRecordSet
-        }
-        env.template.updated = true;
-        env.form.getTree().appendChild(env.template);
-      }
-      return;
+      bindRelation(exp, env);
+      break;
 
     case 'binary':
       const left  = preEvaluate(exp.left,  env);
       const right = preEvaluate(exp.right, env);
-      return applyOp(exp.operator, left, right, env);
+      if(env.property === 'Rows')
+        return applyOp(exp.operator, left, right, env);
+      break;
 
     case 'path':
       const pathReader = createPathReader(exp);
       const walkTo = preEvaluate(pathReader.next(), env);
-      return walkTo(pathReader);
+      return walkTo(pathReader, env);
 
     case 'num':
     case 'str':
-      return exp.value;
+    case 'punc':
+    case 'datetime':
+      return exp.value.toString();
 
     case 'id':
       if(exp.value === 'index') return null;
-      if(exp.value === 'Map') return function (pathReader) {
-        const separator = preEvaluate(pathReader.next(), env);
-        const map = env.map;
-        const template = env.template;
-        const resourceName = preEvaluate(pathReader.next(), env);
-        const resource = map.getEntity(resourceName);
-        if(env.property === 'Rows') {
-          if(pathReader.hasNext()) {
-            pathReader.next(); // skip separator
-            //if(resourceName === 'activity');
-            return { type: 'filter',
-              resource: resourceName,
-              field: preEvaluate(pathReader.next(), env)
-            };
-            //return {type:'entityProperty', value:preEvaluate(pathReader.next(), env)};
-          } else {
-            return resource;
-          }
-        } else {
-          pathReader.next() // skip separator
-          const propertyName = preEvaluate(pathReader.next(), env);
-          const field = resource.getField(propertyName);
-          let query = null;
-          if(env.template.parent) {
-            query = env.template.parent.query;
-          } else {
-            query = env.template.query;
-          }
-          query = query.findRecordSet(resourceName);
-          query.properties.push(field);
-        }
-      }
+      if(exp.value === 'Map') return walkToMap; 
+      if(exp.value === 'Form') return walkToForm;
+      if(exp.value === 'Parent') return walkToParent;
 
-      if(exp.value === 'Form') return function (pathReader) {
-        const separator = preEvaluate(pathReader.next(), env);
-        const form = env.form;
-
-        if(env.property === 'Rows') {
-
-            const parent = form.findTemplate(preEvaluate(pathReader.next()), env);
-            if(!parent.query) {
-              if(parent.visited === true)
-                throw new Error("Cyclical parent reference !");
-              parent.visited = true;
-              const tmpEnv = {form: env.form, map: env.map, template: parent, property: 'Rows'}
-              preEvaluate(parent.rows, tmpEnv);
-            }
-            return parent;
-
-        } else {
-
-          if(pathReader.hasNext()) {
-            return form.findTemplate(preEvaluate(pathReader.next(), env));
-          } else {
-            preEvaluate(pathReader.next(), env); // jump over separator
-            const parentRef = preEvaluate(pathReader.next(), env);
-            const parent = form.findTemplate(parentRef);
-            parent.appendChild(env.template);
-          }
-        }
-      }
-
-      if(exp.value === 'Parent') return function (pathReader) {
-        const separator = preEvaluate(pathReader.next(), env);
-        const property = preEvaluate(pathReader.next(), env);
-        return env.template.parent.getProperty(property);
-      }
       return exp.value;
-
-    case 'punc':
-      return exp.value;
-
-    case 'datetime':
-      if(!exp.value.isValid()) throw new Error("Invalid date");
-      return exp.value.toString();
   }
 }
 
