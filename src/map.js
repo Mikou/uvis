@@ -1,12 +1,12 @@
 const providerTypes = {};
 
-let selectedProvider = "";
-let source = "";
+let system = null;
+//let selectedProvider = "";
+//let source = "";
 
 let schema = undefined;
 let resourceProvider = undefined;
 let vismSchema = null;
-let startUpFormName = null;
 
 const Database = {
   Provider: null,
@@ -28,17 +28,14 @@ function setResourceProvider (fn) {
 
 function buildSchema () {
   
-  if(typeof resourceProvider === 'undefined')
-    throw new Error('Resource provider missing');
-
   return new Promise(function (resolve, reject) {
+    const resourceProvider = system.getResourceProvider();
     resourceProvider('dataSchema', {
         method:'GET',
         source: Database.Source,
       }).then(function (schemaStr) {
-      const dbProvider = getProvider(selectedProvider);
       const dbSchema = dbProvider.parser(schemaStr);
-      schema = dbProvider.mapper(vismSchema, dbSchema);
+      schema = Database.Provider.mapper(vismSchema, dbSchema);
       resolve();
     }).catch(function (err) {
       reject(err);
@@ -47,29 +44,8 @@ function buildSchema () {
   });
 }
 
-function setStartUpFormName (name) {
-  startUpFormName = name;
-}
-
-function getVisfileName () {
-  return startUpFormName;
-}
-
-function setDbProvider (str) {
-  Database.Provider = str;
-}
-
-function setDbSource (str) {
-  Database.Source = str;
-}
-
-
 function setVismSchema (schema) {
   vismSchema = schema;
-}
-
-function downloadForm() {
-  return resourceProvider('visfile', {filename:startUpFormName, method: 'GET'});
 }
 
 function createEntity(name) {
@@ -93,13 +69,18 @@ function createEntity(name) {
   return entity;
 }
 
-function validateTypeParams() {
 
+/**
+ * Validation of the configuration for a type
+ * @param {object} configuration object
+ */
+function validateTypeParams(config) {
+  // do some validation on the provided params
 }
 
-function registerProvider (name, params) {
-  validateTypeParams(name, params);
-  providerTypes[name] = params;
+function registerProvider (name, config) {
+  validateTypeParams(name, config);
+  providerTypes[name] = config;
 }
 
 function getProvider (name) {
@@ -231,12 +212,12 @@ function setupDefaultProviders () {
 }
 
 function getSelectedDbProvider () {
-  return selectedProvider;
+  return Database.Provider;
 }
 
 function setDbInfo(provider, sourceStr) {
-  selectedProvider = provider;
-  source = sourceStr;
+  Database.Provider = provider;
+  Database.Source = sourceStr;
 }
 function getDbInfo() {
   return Database;
@@ -246,19 +227,20 @@ function hasSchemaDefinition() {
   return (Database.Provider !== null);
 }
 
+function setSystem (module) {
+  system = module;
+}
+
+
 setupDefaultProviders();
 
 export default {
+  setSystem:setSystem,
   createEntity: createEntity,
   registerProvider: registerProvider,
-  getProvider: getProvider,
   setDbInfo: setDbInfo,
   getDbInfo: getDbInfo,
   getSelectedDbProvider: getSelectedDbProvider,
-  setStartUpFormName: setStartUpFormName,
-  getVisfileName: getVisfileName,
-  setDatabaseProvider: setDbProvider,
-  setDatabaseSource: setDbSource,
   setVismSchema: setVismSchema,
   getEntity: getEntity,
   buildSchema: buildSchema,

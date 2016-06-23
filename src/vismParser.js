@@ -1,5 +1,6 @@
 let ts;
 let current = null;
+let system = null;
 let map = null;
 let isTable = false;
 
@@ -202,13 +203,11 @@ function eof () {
 function parse() {
   const visMap = {};
   const headerTemplate = parseTemplate();
-  map.setStartUpFormName(headerTemplate.StartUpForm.value.value);
+  system.setVisfileName(headerTemplate.StartUpForm.value.value);
   const dbTemplate = parseTemplate();
   if(dbTemplate.Database) {
     const dbProvider = dbTemplate.Database.value.value[0].right.value;
     const dbSource = dbTemplate.Database.value.value[1].right.value;
-    map.setDatabaseProvider(dbProvider);
-    map.setDatabaseSource(dbSource);
     map.setDbInfo(dbProvider, dbSource);
 
     const schema = {};
@@ -223,6 +222,7 @@ function parse() {
 
 function init (config) {
   ts  = config.tokenizer;
+  system = config.system;
   map = config.map;
 };
 

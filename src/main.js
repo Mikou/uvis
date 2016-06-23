@@ -5,27 +5,16 @@ import visParser from './visParser';
 import map from './map';
 import canvas from './canvas';
 import form from './form';
+import system from './system';
+import helpers from './helpers';
 import configValidator from './configValidator';
 import visMapValidator from './visMapValidator';
 import browserValidator from './browserValidator';
 import toolBox from './toolBox';
 
-let initialVismfile = null;
-let visfile = null;
-let resourceProvider = null;
-let selector = null;
-let role = "endUser";
-let screen = document.createElement('div');
-screen.id = "screen";
-  const h1 = document.createElement('h1');
-  h1.innerHTML = "Screen";
-  screen.appendChild(h1);
-
-
 const events = {};
 
 function saveVismFile (filename, stream) {
-
   resourceProvider('vismfile', {
     filename:initialVismfile,
     method:'POST',
@@ -38,57 +27,87 @@ function saveVismFile (filename, stream) {
   });
 }
 
-function openVisfile () {
-  selector.appendChild(screen);
-  toolBox.create(selector);
-  toolBox.setRole(role);
-  toolBox.setSaveVismfileMethod(saveVismFile);
+function run () {
+  map.setSystem(system);
+  canvas.setSystem(system);
+  const startEventHandler = events['renderingStart'];
+  if(typeof startEventHandler === 'function')
+    startEventHandler();
 
-  return new Promise( function (resolve, reject) {
-
-    resourceProvider('vismfile', {
-    filename:initialVismfile, 
-      method:'GET'
-    }).then(function(stream) {
-
-      toolBox.setVismfile(initialVismfile, stream);
-      //toolBox.renderVismfile(stream, initialVismfile, role);
-      const vismfileCallback = events['vismFileLoaded'];
-      if(typeof vismfileCallback === 'function')
-        vismfileCallback(stream);
-
-      map.setResourceProvider(resourceProvider);
-
+  // (1) OPEN VISM FILE
+  reset(); // usefull if a screen was already generated
+  system.openVismfile().then(function(stream) {
+    // I return a new promise because the vism file might contain a database 
+    // schema description. In this case, an async call is made to the database.
+    // But the vismfile might NOT describe a database. In this case there is
+    // no async call. I am not sure that returning a Promise in this case
+    // is the most elegant solution.
+    return new Promise(function (resolve, reject) {
+      //map.setResourceProvider(resourceProvider);
       vismParser.init({
         tokenizer: tokenizer(streamReader(stream)),
+        system: system,
         map:map
       });
-
       vismParser.parse();
+
+  // (2) EVENTUALLY BUILD DB SCHEMA
+
+      // I believe it would be best here to return the promise of building a
+      // a schema. But this is problematic if there is no database schema since
+      // what to return then? null? the visfileName?
       if(map.hasSchemaDefinition()) {
-        map.buildSchema().then(function () {
-          resolve(map.downloadForm());
+        map.buildSchema().then(function() {
+          resolve(system.openVisfile());
         });
       } else {
-        resolve(map.downloadForm());
+        resolve(system.openVisfile());
       }
-    }).catch(function(err) {
-      reject(new Error(err));
     });
-  });
-}
+  // (3) VIS FILE OPENED
+  }).then(function(stream) {
 
-function getDataInstances(visStream) {
-  return new Promise( function (resolve, reject) {
     visParser.init({
-      tokenizer: tokenizer(streamReader(visStream)), 
+      tokenizer: tokenizer(streamReader(stream)), 
       canvas: canvas, 
       form: form
     });
 
     visParser.parse();
 
-    // preevaluate rows in order to build the template Tree
+    return allocate();
+
+  // (4) DATA INSTANCES READY
+  }).then(function (data) {
+
+    const tree = form.getTree();
+    canvas.createHTMLCanvas(screen);
+    render(form.getTree(), data);
+    canvas.reflow();
+    //system.getPlaceholder().appendChild(screen);
+    const endEventHandler = events['renderingSucceeded'];
+    if(typeof endEventHandler === 'function')
+      endEventHandler();
+
+  // (5) EVENTUALLY, SOMETHING WENT WRONG IN THE PROCESS
+  }).catch(function (err) {
+    canvas.throwError(err);
+    throw(err);
+  });
+}
+
+function openVismfile (filename) {
+  return resourceProvider('vismfile', { filename: filename, method:'GET' });
+}
+
+function openVisfile (filename) {
+  return resourceProvider('vismfile', { filename: filename, method:'GET' });
+}
+
+function allocate() {
+  return new Promise( function (resolve, reject) {
+
+     // preevaluate rows in order to build the template Tree
     const templateList = form.getTemplateList();
 
     for(let name in templateList) {
@@ -114,6 +133,7 @@ function getDataInstances(visStream) {
 
     for(let i in templateList) {
       if(templateList[i].query) {
+        const resourceProvider = system.getResourceProvider();
         dataQueue.push(resourceProvider('query', {template:templateList[i], source: map.getDbInfo().Source}));
       }
     }
@@ -122,82 +142,50 @@ function getDataInstances(visStream) {
   });
 }
 
-function generateScreen(dataInstances) {
-  const templateList = form.getTemplateList();
-  canvas.createHTMLCanvas(screen);
-  function render(template) {
-    if(template.rows) {
-      const env = {form: form, map: map, template: template, property: 'Rows'};
-      const instances = evaluate(template.rows, env);
-      env.instances = instances;
-      if(instances) {
-        for(let i=0, len=instances.length; i<len; i++) {
-          const component = canvas.createComponent(template.componentType);
-          template.index=i;
-          template.instance = instances[i];
-          for(let propertyName in template.properties) {
-            const property = template.properties[propertyName];
-            env.property = propertyName;
-            const r = evaluate(property, env);
-            // caches the evaluated value on the property so that it can be
-            // returned immediatelly if requested by another template
-            // this saves the cost of an unecessary evaluation if a property
-            // was already evaluated once
-            property.cache = r;
-            component.setProperty(propertyName, r);
-          }
-          canvas.getTree().appendChild(component);
-          if(template.children) {
-            for(let i=0, len=template.children.length; i<len; i++) {
-              render(template.children[i]);
-            }
-          }
+function render(template, data) {
+  if(template.rows) {
+    const env = {form: form, map: map, template: template, property: 'Rows'};
+    const instances = evaluate(template.rows, env);
+    env.instances = instances;
+    if(instances) {
+      for(let i=0, len=instances.length; i<len; i++) {
+        const component = canvas.createComponent(template.componentType);
+        template.index=i;
+        template.instance = instances[i];
+        for(let propertyName in template.properties) {
+          const property = template.properties[propertyName];
+          env.property = propertyName;
+          const evaluatedProperty = evaluate(property, env);
+          // caches the evaluated value on the property so that it can be
+          // returned immediatelly if requested by another template
+          // this saves the cost of an unecessary evaluation if a property
+          // was already evaluated once
+          property.cache = evaluatedProperty;
+          component.setProperty(propertyName, evaluatedProperty);
         }
-      }
-    } else {
-      const tmpCanvas = canvas;
-      const component = (template.componentType === 'Canvas') ? canvas.getTree() : canvas.createComponent(template.componentType);
-      const env = {form:form, template: template};
-      for(let propName in template.properties) {
-        env.property = propName;
-        const v = evaluate(template.properties[propName], env);
-        component.setProperty(propName, v);
-      }
-      if(template.componentType !== 'Canvas')
         canvas.getTree().appendChild(component);
-      if(template.children) {
-        for(let i=0, len=template.children.length; i<len; i++) {
-          render(template.children[i]);
+        if(template.children) {
+          for(let i=0, len=template.children.length; i<len; i++) {
+            render(template.children[i], data);
+          }
         }
       }
     }
-  }
-  const tree = form.getTree();
-  render(form.getTree());
-}
-
-function createPathReader (path) {
-  function next () {
-    const value = peek();
-    path = (value !== null) ? path.next : undefined;
-    return value;
-  }
-  function hasNext() {
-    return (typeof path !== 'undefined');
-  }
-  function peek () {
-    if(typeof path === 'undefined') return null;
-    return path.content;
-  }
-  function getIndex () {
-    return path.index;
-  }
-
-  return {
-    hasNext: hasNext,
-    next: next,
-    peek: peek,
-    getIndex: getIndex
+  } else {
+    const component = (template.componentType === 'Canvas') ? canvas.getTree() : canvas.createComponent(template.componentType);
+    const env = {form:form, template: template};
+    for(let propName in template.properties) {
+      env.property = propName;
+      const v = evaluate(template.properties[propName], env);
+      component.setProperty(propName, v);
+    }
+    if(template.componentType !== 'Canvas')
+      canvas.getTree().appendChild(component);
+    if(template.children) {
+      for(let i=0, len=template.children.length; i<len; i++) {
+        render(template.children[i], data);
+      }
+    }
   }
 }
 
@@ -208,7 +196,6 @@ function findRecordSet (name) {
 }
 
 function evaluate(exp, env) {
-
   function walkToMap (pathReader, env) {
     const form = env.form;
     const separator = evaluate(pathReader.next(), env);
@@ -340,7 +327,7 @@ function evaluate(exp, env) {
       const right = evaluate(exp.right, env);
       return applyOp(exp.operator, left, right);
     case 'path':
-      const pathReader = createPathReader(exp);
+      const pathReader = helpers.createPathReader(exp);
       const walkTo = evaluate(pathReader.next(), env);
       return walkTo(pathReader, env);
     case 'num':
@@ -517,7 +504,7 @@ function preEvaluate(exp, env) {
       break;
 
     case 'path':
-      const pathReader = createPathReader(exp);
+      const pathReader = helpers.createPathReader(exp);
       const walkTo = preEvaluate(pathReader.next(), env);
       return walkTo(pathReader, env);
 
@@ -538,9 +525,6 @@ function preEvaluate(exp, env) {
 }
 
 function reset () {
-  visfile = null;
-
-  //map.reset();
   form.reset();
   canvas.reset();
 }
@@ -573,50 +557,10 @@ window.uvis = {
       throw new Error('failed to write the vismfile', err);
     });
   },
-  openVismFile: function (filename) {
-    initialVismfile = filename;
-    reset(); 
-    const startEventHandler = events['renderingStart'];
-    if(typeof startEventHandler === 'function')
-      startEventHandler();
-
-    openVisfile().then(function (visStream) {
-
-      toolBox.setVisfile(map.getVisfileName(), visStream);
-      toolBox.render();
-      return getDataInstances(visStream)
-    }).then(function(dataInstances) {
-      generateScreen(dataInstances);
-
-      const endEventHandler = events['renderingSucceeded'];
-      if(typeof endEventHandler === 'function')
-      endEventHandler();
-
-    }).catch(function (err) {
-      canvas.createHTMLCanvas(screen);
-      const homeBtn  = canvas.createComponent("NavBtn");
-      const errorBox = canvas.createComponent("TextBox");
-      const tree = canvas.getTree();
-
-      tree.appendChild(errorBox);
-      tree.appendChild(homeBtn);
-
-      homeBtn.setProperty("Top", 10);
-      homeBtn.setProperty("Left", 10);
-      homeBtn.setProperty("BackgroundColor", "DarkGray");
-      homeBtn.setProperty("Color", "White");
-      homeBtn.setProperty("Border", 1);
-      homeBtn.setProperty("Text", "Home");
-      homeBtn.setProperty("GoTo", "/");
-
-      errorBox.setProperty("Top", 100);
-      errorBox.setProperty("Text", err.message);
-      errorBox.setProperty("Width", Math.round(errorBox.measureText()) + 20);
-      errorBox.setProperty("BackgroundColor", "DarkRed");
-      errorBox.setProperty("Color", "White");
-      console.log(err);
-    });
+  updateVismfile: function (filename) {
+    system.setVismfileName(filename);
   },
+  run:run,
   setRole: function (roleType) {
     role = roleType;
     toolBox.setRole(roleType);
@@ -631,10 +575,11 @@ window.uvis = {
   registerComponent: canvas.registerComponent,
   config: function (userConfig) {
     browserValidator();
-    const validConfig = configValidator(userConfig);
-    initialVismfile   = validConfig.initialVismfile;
-    resourceProvider  = validConfig.resourceProvider;
-    selector          = validConfig.selector;
+    const validConfig   = configValidator(userConfig);
+    system.setResourceProvider(validConfig.resourceProvider);
+    system.setPlaceholder(validConfig.selector);
+    system.setVismfileName(validConfig.initialVismfile);
+    system.setMode('designer');
   },
   getQueryTranslator: function (queryModel) {
     const selectedDbProvider = map.getSelectedDbProvider();

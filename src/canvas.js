@@ -1,3 +1,5 @@
+let system = null;
+import components from './components';
 const types = {};
 const validators   = {};
 let selector       = undefined;
@@ -6,7 +8,7 @@ let context        = undefined;
 let tree           = undefined;
 let baseProperties = null;
 
-function reflow (context) {
+function reflow () {
 
   const h = {};
 
@@ -24,7 +26,12 @@ function reflow (context) {
     for(let z=0, len=keysSorted.length; z<len; z++) {
       const Components = h[keysSorted[z]];
       for(let i=0, len=Components.length; i<len; i++) {
-        Components[i].draw(context);
+        const Component = Components[i];
+        if(Component.type === 'Canvas') {
+          Component.draw(context, HTMLCanvas);
+        } else {
+          Component.draw(context);
+        }
       }
     }
 
@@ -58,7 +65,7 @@ function createProperty (name, params) {
     name: name,
     initialValue: params.initialValue,
     computedValue: undefined,
-    validator: params.validator,
+    validator: getValidator(params.validator),
     getValue: function () {
       if(typeof this.computedValue !== 'undefined')
         return this.computedValue;
@@ -101,7 +108,8 @@ function validateTypeParameters (name, typeParams) {
 
   // the provided initialValues should pass their given validator;
   for(var prop in properties) {
-    typeParams.properties[prop].validator(typeParams.properties[prop].initialValue, prop);  
+    const validator = getValidator(typeParams.properties[prop].validator);
+    validator(typeParams.properties[prop].initialValue, prop);  
   }
 }
 
@@ -134,6 +142,7 @@ function createComponent (type, internal) {
     component[key] = T[key];
   }
 
+  component.type = type;
   return component;
 }
 
@@ -215,134 +224,10 @@ function setupBuiltInValidators () {
 
 function setupBuiltInComponents () {
 
-  registerComponent('Base', {
-    abstract: true,
-    children: [],
-    properties: {
-      Top:    { initialValue: 10,  validator: getValidator('integer')},
-      Bottom: { initialValue: 0,   validator: getValidator('integer')},
-      Left:   { initialValue: 10,  validator: getValidator('integer')},
-      Width:  { initialValue: 100, validator: getValidator('integer')},
-      Height: { initialValue: 50,  validator: getValidator('integer')},
-      Color:  { initialValue: 'Black', validator: getValidator('color')},
-      BackgroundColor: { initialValue: 'White', validator: getValidator('color')},
-      Border: { initialValue: 1,   validator: getValidator('integer')},
-      ZIndex: { initialValue: 0, validator: getValidator('integer')},
-    },
-    getProperty: function (name) {
-      // (1) lookup in the local properties
-      for(var prop in this.properties)
-        if(name === prop) return this.properties[prop];
-      // (2) otherwise lookup in the prototype's properties
-      const prototype = Object.getPrototypeOf(this);
-      if(prototype.hasOwnProperty('properties'))
-        return this.getProperty.call(prototype, name);
-      // (3) The property was not found
-      throw new Error("property " + name + " does not exist.");
-    },
-    setProperty: function (name, value) {
-      const property = this.getProperty(name);
-      let reflow = false;
-      if(this.parent) reflow = true;
-      property.setValue(value, reflow);
-      return property;
-    },
-    resetProperty: function (name) {
-      var property = this.getProperty(name);
-      property.resetValue();
-    },
-    appendChild: function (Component) {
-      Component.parent=this;
-      this.children.push(Component);
-      reflow(context);
-    }
+  for(var componentName in components) {
+    registerComponent(componentName, components[componentName]);
+  }
 
-  });
-
-  registerComponent('SimpleBox', {
-    extends: 'Base',
-    abstract: false,
-    draw: function(context) {
-      const border = this.getProperty("Border").getValue();
-      const color = this.getProperty("Color").getValue();
-      const bgCol = this.getProperty("BackgroundColor").getValue();
-      const l = this.getProperty("Left").getValue();
-      const t = this.getProperty("Top").getValue();
-      const w = this.getProperty("Width").getValue();
-      const h = this.getProperty("Height").getValue();
-
-      context.beginPath();
-      context.fillStyle = bgCol;
-      context.fillRect(l, t, w, h);
-      context.fill();
-
-      if(border) {
-        context.strokeStyle = color;
-        context.lineWidth   = border;
-        context.strokeRect(l, t, w, h);
-      }
-      context.closePath();
-    }
-  });
-
-  registerComponent('Canvas', {
-    extends: 'SimpleBox',
-    abstract: true,
-    draw: function(context) {
-      var prototype = Object.getPrototypeOf(this);
-      // clear Everything
-      HTMLCanvas.width = this.getProperty("Width").getValue();
-      HTMLCanvas.height = this.getProperty("Height").getValue();
-      context.clearRect(0,0,context.canvas.width,context.canvas.height);
-      prototype.draw(context);
-    }
-  });
-
-  registerComponent('TextBox', {
-    extends: 'SimpleBox',
-    properties:{
-      Text:          {initialValue:'No Text', validator: getValidator('string')}, 
-      TextAlignment: {initialValue:'left', validator: getValidator('textAlignment')},
-      FontSize:      {initialValue:14, validator: getValidator('integer')},
-      FontFamily:    {initialValue:'Arial', validator: getValidator('string')}
-    },
-    draw: function(context) {
-      const prototype = Object.getPrototypeOf(this);
-
-      let posX = this.getProperty("Left").getValue();
-      const posY = (this.getProperty("Top").getValue() 
-                 + this.getProperty("Height").getValue() / 2) 
-                 + (this.getProperty("FontSize").getValue() / 2.5);
-      const font = this.getProperty("FontSize").getValue() 
-                 + "px " 
-                 + this.getProperty("FontFamily").getValue();
-      const text = this.getProperty("Text").getValue();
-      const align = this.getProperty("TextAlignment").getValue().toUpperCase();
-      const textWidth = context.measureText(text).width;
-
-      if(align === 'RIGHT') {
-        posX = this.getProperty("Left").getValue() 
-             + this.getProperty("Width").getValue() - textWidth - 10;
-      } else if(align === 'CENTER') {
-        posX = this.getProperty("Left").getValue() 
-             + this.getProperty("Width").getValue() / 2 - (textWidth / 2);
-      } else {
-        posX = posX + 10;
-      }
-
-      // draw the box
-      prototype.draw(context);
-
-      context.font=font;
-      context.textAlign = align;
-      context.fillStyle = this.getProperty("Color").getValue();
-      context.fillText(text ,posX ,posY);
-    },
-    measureText: function () {
-      const text = this.getProperty("Text").getValue();
-      return context.measureText(text).width;
-    }
-  });
 }
 
 function getTree () {
@@ -393,18 +278,47 @@ function createHTMLCanvas(selector) {
       });
     });
 
-    selector.appendChild(HTMLCanvas);
+    system.getPlaceholder().appendChild(HTMLCanvas);
   }
 }
 
 setupBuiltInValidators();
 setupBuiltInComponents();
 
+function throwError (err) {
+  createHTMLCanvas(screen);
+  const tree = getTree();
+  const homeBtn  = createComponent("NavBtn");
+  const errorBox = createComponent("TextBox");
+  tree.appendChild(errorBox);
+  tree.appendChild(homeBtn);
+
+  homeBtn.setProperty("Top", 10);
+  homeBtn.setProperty("Left", 10);
+  homeBtn.setProperty("BackgroundColor", "DarkGray");
+  homeBtn.setProperty("Color", "White");
+  homeBtn.setProperty("Border", 1);
+  homeBtn.setProperty("Text", "Home");
+  homeBtn.setProperty("GoTo", "/");
+
+  errorBox.setProperty("Top", 100);
+  errorBox.setProperty("Text", err.message);
+  errorBox.setProperty("Width", Math.round(errorBox.measureText(context)) + 20);
+  errorBox.setProperty("BackgroundColor", "DarkRed");
+  errorBox.setProperty("Color", "White");
+  reflow();
+}
+
+function setSystem (module) {
+  system = module;
+}
+
 function reset () {
   tree = undefined;
 }
 
 export default {
+  setSystem: setSystem,
   reset: reset,
   registerComponent: registerComponent,
   createComponent: createComponent,
@@ -413,6 +327,8 @@ export default {
   getValidator: getValidator,
   createHTMLCanvas: createHTMLCanvas,
   getTree: getTree,
+  reflow: reflow,
+  throwError: throwError,
   debug: {
     getTypes: function() {
       return types;
