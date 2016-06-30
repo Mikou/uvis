@@ -376,9 +376,9 @@ function preEvaluate(exp, env) {
     if(env.template.parent == null) {
       env.template.query = {
         type: 'query',
-        name: relation.name,
-        primaryKey: relation.primaryKey,
-        foreignKeys: relation.foreignKeys,
+        name: env.relation.name,
+        primaryKey: env.relation.primaryKey,
+        foreignKeys: env.relation.foreignKeys,
         query: {},
         properties: [],
         expand:null,
@@ -513,7 +513,7 @@ function preEvaluate(exp, env) {
   switch(exp.type) {
     case 'formula':
       env.template.updated = true;
-      const relation = preEvaluate(exp.value, env);
+      env.relation = preEvaluate(exp.value, env);
       if(env.property === 'Rows')
         makeQueryModel(exp, env);
       break;
