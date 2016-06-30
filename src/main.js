@@ -29,7 +29,9 @@ function run () {
 
   // (1) OPEN VISM FILE
   reset(); // usefull if a screen was already generated
+  toolBox.create(system.getPlaceholder());
   system.openVismfile().then(function(stream) {
+    toolBox.setVismfile(system.getVismfileName(), stream);
     // I return a new promise because the vism file might contain a database 
     // schema description. In this case, an async call is made to the database.
     // But the vismfile might NOT describe a database. In this case there is
@@ -60,6 +62,7 @@ function run () {
   // (3) VIS FILE OPENED
   }).then(function(stream) {
 
+    toolBox.setVisfile(system.getVisfileName(), stream);
     visParser.init({
       tokenizer: tokenizer(streamReader(stream)), 
       canvas: canvas, 
@@ -67,7 +70,7 @@ function run () {
     });
 
     visParser.parse();
-
+    toolBox.render();
   // (4) CREATE TEMPLATE TREE
     createTree();
     return allocate();
@@ -589,6 +592,7 @@ window.uvis = {
   setRole: function (roleType) {
     role = roleType;
     toolBox.setRole(roleType);
+    console.log(toolBox);
     toolBox.render();
   },
   /*emit: function (name, args) {

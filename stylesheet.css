@@ -1,7 +1,7 @@
 #toolBox {
   background-color:White;
   position: absolute;
-  left:0;top:0;height:100%;width:300px;
+  right:0;top:0;height:100%;width:300px;
 }
 #toolbox .note {
   padding:5px;
@@ -11,10 +11,8 @@
   position:absolute;
   left:300px;top:0;height:100%;right:0;
 }
-
 textarea {
   min-height:200px;
   min-width:300px;
 }
-
 

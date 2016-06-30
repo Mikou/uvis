@@ -11,10 +11,18 @@ function setVisfileName (filename) {
   visfileName = filename;
 }
 
+function getVisfileName () {
+  return visfileName;
+}
+
 function setVismfileName (filename) {
   if(typeof filename !== 'string')
     throw new Error('The file name must be a string');
   vismfileName = filename;
+}
+
+function getVismfileName () {
+  return vismfileName;
 }
 
 function openVismfile () {
@@ -63,7 +71,9 @@ export default {
   setMode: setMode,
   getMode: getMode,
   setVisfileName: setVisfileName,
+  getVisfileName: getVisfileName,
   setVismfileName: setVismfileName,
+  getVismfileName: getVismfileName,
   openVismfile: openVismfile,
   openVisfile: openVisfile
 }
