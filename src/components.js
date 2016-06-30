@@ -1,3 +1,5 @@
+import events from './events';
+
 export default {
   'Base': {
     abstract: true,
@@ -121,6 +123,24 @@ export default {
     measureText: function (context) {
       const text = this.getProperty("Text").getValue();
       return context.measureText(text).width;
+    }
+  },
+  'NavBtn': {
+    extends: 'TextBox',
+    properties: {
+      GoTo: {initialValue:'#', validator: 'string'}
+    },
+    click: function ( e ) {
+      var left   = this.getProperty("Left").getValue();
+      var top    = this.getProperty("Top").getValue();
+      var width  = this.getProperty("Width").getValue();
+      var height = this.getProperty("Height").getValue();
+      var hit = e.mouseX >= left && e.mouseX  <= left + width 
+             && e.mouseY >= top  && e.mouseY  <= top + height;
+      if(hit) {
+        var link = this.getProperty('GoTo').getValue();
+        events.publish("GOTO", link);
+      }
     }
   }
 }

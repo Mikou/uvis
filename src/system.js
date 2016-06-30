@@ -22,7 +22,7 @@ function openVismfile () {
 }
 
 function openVisfile () {
-  return resourceProvider('vismfile', { filename: visfileName, method:'GET' });
+  return resourceProvider('visfile', { filename: visfileName, method:'GET' });
 }
 
 function getResourceProvider () {

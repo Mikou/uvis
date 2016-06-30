@@ -1,13 +1,10 @@
+/** @namespace Map */
 const providerTypes = {};
-
 let system = null;
-//let selectedProvider = "";
-//let source = "";
-
 let schema = undefined;
 let resourceProvider = undefined;
 let vismSchema = null;
-
+let rowsLimit = null;
 const Database = {
   Provider: null,
   Source: null
@@ -30,12 +27,13 @@ function buildSchema () {
   
   return new Promise(function (resolve, reject) {
     const resourceProvider = system.getResourceProvider();
+    const dbProvider = providerTypes[Database.Provider];
     resourceProvider('dataSchema', {
         method:'GET',
         source: Database.Source,
       }).then(function (schemaStr) {
       const dbSchema = dbProvider.parser(schemaStr);
-      schema = Database.Provider.mapper(vismSchema, dbSchema);
+      schema = dbProvider.mapper(vismSchema, dbSchema);
       resolve();
     }).catch(function (err) {
       reject(err);
@@ -72,20 +70,34 @@ function createEntity(name) {
 
 /**
  * Validation of the configuration for a type
+ * @memberof Map
  * @param {object} configuration object
  */
 function validateTypeParams(config) {
   // do some validation on the provided params
 }
 
+/**
+ * Register a new dbProvider type
+ * @memberof Map
+ * @param {name} name of the provider type
+ * @param {config} configuration object holding the type specifications.
+ */
 function registerProvider (name, config) {
   validateTypeParams(name, config);
   providerTypes[name] = config;
 }
 
+/**
+ * Return a given provider type
+ * @param {name} name of the provider type
+ * @memberof Map
+ * @return {object} dbProvider
+ */
 function getProvider (name) {
   return providerTypes[name];
 }
+
 
 function createResourceSchema() {
   const prototype = {
@@ -96,9 +108,13 @@ function createResourceSchema() {
       throw new Error("No such field '" + name + "'");
     }
   };
-
   return Object.create(prototype);
 }
+
+/**
+ * Setup the default built-in database providers
+ * @memberof Map
+ */
 
 function setupDefaultProviders () {
   registerProvider('pgsql', {
@@ -212,7 +228,8 @@ function setupDefaultProviders () {
 }
 
 function getSelectedDbProvider () {
-  return Database.Provider;
+  return providerTypes[Database.Provider];
+  //return Database.Provider;
 }
 
 function setDbInfo(provider, sourceStr) {
@@ -231,8 +248,11 @@ function setSystem (module) {
   system = module;
 }
 
-
 setupDefaultProviders();
+
+function setRowsLimit (num) {
+  rowsLimit = num;
+}
 
 export default {
   setSystem:setSystem,
@@ -240,12 +260,13 @@ export default {
   registerProvider: registerProvider,
   setDbInfo: setDbInfo,
   getDbInfo: getDbInfo,
+  getProvider: getProvider,
   getSelectedDbProvider: getSelectedDbProvider,
   setVismSchema: setVismSchema,
   getEntity: getEntity,
   buildSchema: buildSchema,
-  downloadForm: downloadForm,
   setResourceProvider: setResourceProvider,
   hasSchemaDefinition: hasSchemaDefinition,
-  getSchema: function () {return schema;}
+  getSchema: function () {return schema;},
+  setRowsLimit: setRowsLimit
 }

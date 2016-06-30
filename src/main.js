@@ -1,3 +1,4 @@
+/** @namespace Uvis */
 import streamReader from './compiler/streamReader';
 import tokenizer from './compiler/tokenizer';
 import vismParser from './vismParser';
@@ -11,22 +12,14 @@ import configValidator from './configValidator';
 import visMapValidator from './visMapValidator';
 import browserValidator from './browserValidator';
 import toolBox from './toolBox';
+import events from './events';
+//const events = {};
 
-const events = {};
 
-function saveVismFile (filename, stream) {
-  resourceProvider('vismfile', {
-    filename:initialVismfile,
-    method:'POST',
-    content: stream
-  }).then(function (result) {
-    reset();
-    run();
-  }).catch(function (err) {
-    throw new Error('failed to write the vismfile', err);
-  });
-}
-
+/**
+ * Start the GUI generation process
+ * @memberof Uvis
+ */
 function run () {
   map.setSystem(system);
   canvas.setSystem(system);
@@ -75,9 +68,11 @@ function run () {
 
     visParser.parse();
 
+  // (4) CREATE TEMPLATE TREE
+    createTree();
     return allocate();
 
-  // (4) DATA INSTANCES READY
+  // (5) DATA INSTANCES READY
   }).then(function (data) {
 
     const tree = form.getTree();
@@ -89,60 +84,65 @@ function run () {
     if(typeof endEventHandler === 'function')
       endEventHandler();
 
-  // (5) EVENTUALLY, SOMETHING WENT WRONG IN THE PROCESS
+  // (6) EVENTUALLY, SOMETHING WENT WRONG IN THE PROCESS
   }).catch(function (err) {
     canvas.throwError(err);
     throw(err);
   });
 }
 
-function openVismfile (filename) {
-  return resourceProvider('vismfile', { filename: filename, method:'GET' });
+function createTree() {
+  const templateList = form.getTemplateList();
+  for(let name in templateList) {
+    const template = templateList[name];
+    if(template.rows) {
+      const env = {form: form, map: map, template: template, property: 'Rows'};
+      if(!template.updated)
+        preEvaluate(template.rows, env);
+    } else {
+      form.getTree().appendChild(template);
+    }
+  }
+
+  // preEvaluate all other properties
+  for(let idx in templateList) {
+    const template = templateList[idx];
+    for(let property in template.properties) {
+      const env = {form: form, map: map, template: template, property: property};
+      preEvaluate(template.properties[property], env);
+    }
+  }
 }
 
-function openVisfile (filename) {
-  return resourceProvider('vismfile', { filename: filename, method:'GET' });
-}
-
+/**
+ * Allocation sends all existing query models on the templates to resource provider
+ * @memberof Uvis
+ * @return {Promise} object representing the queue of data instances
+ */
 function allocate() {
   return new Promise( function (resolve, reject) {
-
-     // preevaluate rows in order to build the template Tree
     const templateList = form.getTemplateList();
-
-    for(let name in templateList) {
-      const template = templateList[name];
-      if(template.rows) {
-        const env = {form: form, map: map, template: template, property: 'Rows'};
-        preEvaluate(template.rows, env);
-      } else {
-        form.getTree().appendChild(template);
-      }
-    }
-
-    // preEvaluate all other properties
-    for(let idx in templateList) {
-      const template = templateList[idx];
-      for(let property in template.properties) {
-        const env = {form: form, map: map, template: template, property: property};
-        preEvaluate(template.properties[property], env);
-      }
-    }
-
     const dataQueue = [];
-
     for(let i in templateList) {
       if(templateList[i].query) {
         const resourceProvider = system.getResourceProvider();
-        dataQueue.push(resourceProvider('query', {template:templateList[i], source: map.getDbInfo().Source}));
+        const dbProvider = map.getSelectedDbProvider();
+        dataQueue.push(resourceProvider('query', {
+          template:templateList[i], 
+          translator: dbProvider.translator,
+          source: map.getDbInfo().Source}));
       }
     }
-
     resolve(Promise.all(dataQueue));
   });
 }
 
-function render(template, data) {
+/**
+ * Recursively goes through the template tree and render it
+ * @memberof Uvis
+ * @param {template} a tree of templates
+ */
+function render(template) {
   if(template.rows) {
     const env = {form: form, map: map, template: template, property: 'Rows'};
     const instances = evaluate(template.rows, env);
@@ -163,10 +163,11 @@ function render(template, data) {
           property.cache = evaluatedProperty;
           component.setProperty(propertyName, evaluatedProperty);
         }
+        template.bundle.push(component);
         canvas.getTree().appendChild(component);
         if(template.children) {
           for(let i=0, len=template.children.length; i<len; i++) {
-            render(template.children[i], data);
+            render(template.children[i]);
           }
         }
       }
@@ -179,12 +180,11 @@ function render(template, data) {
       const v = evaluate(template.properties[propName], env);
       component.setProperty(propName, v);
     }
-    if(template.componentType !== 'Canvas')
+    if(template.componentType !== 'Canvas') {
       canvas.getTree().appendChild(component);
-    if(template.children) {
-      for(let i=0, len=template.children.length; i<len; i++) {
-        render(template.children[i], data);
-      }
+    } else {
+      for(let i=0, len=template.children.length; i<len; i++)
+        render(template.children[i]);
     }
   }
 }
@@ -195,6 +195,14 @@ function findRecordSet (name) {
   return findRecordSet.call(this.expand, name);
 }
 
+/**
+ * Recurcively evaluate a given expression (The first expression is typically a formula)
+ * @memberof Uvis
+ * @private
+ * @param {object} exp - the expression to evaluate
+ * @param {object} env - the evaluation scope, variables that should be available at evaluation time
+ * @return The computed value of an expression that can be assigned to a component
+ */
 function evaluate(exp, env) {
   function walkToMap (pathReader, env) {
     const form = env.form;
@@ -267,6 +275,9 @@ function evaluate(exp, env) {
     return value;
   }
 
+  // This function is not used. I started to write it in order to validate
+  // the idea that a walkTo* function can be infered depending on a value
+  // contained in one of them
   function inferValue(exp, env) {
     let tally = [];
     // lookup in parent
@@ -286,36 +297,40 @@ function evaluate(exp, env) {
     return exp;
   }
 
-  function applyOp (op, left, right) {
-    function num(x) {
-      if (typeof x != "number")
-        throw new Error("Expected number but got " + x);
-      return x;
-    }
+  function num(x) {
+    if (typeof x != "number")
+      throw new Error("Expected number but got " + x);
+    return x;
+  }
 
+  function applyOpRows (op, left, right) {
     switch(op) {
-      case '*' : return num(left) * num(right);
-      case '+' :
-        if(typeof left === 'number' && typeof right === 'number')
-          return num(left) + num(right);
-        return left + "" + right;
-      case '-' :
-        if(typeof left === 'number' && typeof right === 'number')
-          return num(left) - num(right);
-
-      case '<':
-        return null;
-      case '>':
-        return null;
       case '-<':
         return left[right];
       case '>-':
         return left;
       case 'WHERE':
         return left;
-      
+      case '<':
+        return null;
+      case '>':
+        return null;
+    }
+  }
+
+  function applyOpProps (op, left, right) {
+    switch(op) {
+      case '*' : return num(left) * num(right);
+      case '+' :
+        if(typeof left === 'number' && typeof right === 'number') {
+          return num(left) + num(right);
+        } else {
+          return left + "" + right;
+        }
+      case '-' :
+        return num(left) - num(right);
       default:
-          throw new Error('Not yet implemented');
+        throw new Error('Not yet implemented');
     } 
   }
 
@@ -325,7 +340,7 @@ function evaluate(exp, env) {
     case 'binary':
       const left = evaluate(exp.left, env);
       const right = evaluate(exp.right, env);
-      return applyOp(exp.operator, left, right);
+      return (env.property === 'Rows') ? applyOpRows(exp.operator, left, right) : applyOpProps(exp.operator, left, right);
     case 'path':
       const pathReader = helpers.createPathReader(exp);
       const walkTo = evaluate(pathReader.next(), env);
@@ -343,10 +358,19 @@ function evaluate(exp, env) {
   }
 }
 
+/**
+ * Recurcively pre-evaluate a given expression (The first expression is typically a formula)
+ * The pre-evaluation will use the template list provided in the environment in order to build a template tree
+ * Further, it will build query models (JavaScript objects representing a query) on the appropriate templates.
+ * @memberof Uvis
+ * @private
+ * @param {exp} the expression to pre-evaluate
+ * @param {env} the evaluation scope, variables that should be available at pre-evaluation time
+ * @return The computed value of an expression that can be assigned to a component
+ */
 function preEvaluate(exp, env) {
-  function bindRelation (exp, env) {
-    if(env.property === 'Rows' && env.template.parent == null) {
-      if(env.template.query) return;
+  function makeQueryModel (exp, env) {
+    if(env.template.parent == null) {
       env.template.query = {
         type: 'query',
         name: relation.name,
@@ -357,7 +381,6 @@ function preEvaluate(exp, env) {
         expand:null,
         findRecordSet: findRecordSet
       }
-      env.template.updated = true;
       env.form.getTree().appendChild(env.template);
     }
   }
@@ -365,21 +388,15 @@ function preEvaluate(exp, env) {
   function walkToForm (pathReader, env) {
     const separator = preEvaluate(pathReader.next(), env);
     const form = env.form;
-
     if(env.property === 'Rows') {
-
         const parent = form.findTemplate(preEvaluate(pathReader.next()), env);
-        if(!parent.query) {
-          if(parent.visited === true)
-            throw new Error("Cyclical parent reference !");
-          parent.visited = true;
-          const tmpEnv = {form: env.form, map: env.map, template: parent, property: 'Rows'}
-          preEvaluate(parent.rows, tmpEnv);
-        }
+        if(parent.visited === true)
+          throw new Error("Cyclical parent reference !");
+        parent.visited = true;
+        const tmpEnv = {form: env.form, map: env.map, template: parent, property: 'Rows'}
+        preEvaluate(parent.rows, tmpEnv);
         return parent;
-
     } else {
-
       if(pathReader.hasNext()) {
         return form.findTemplate(preEvaluate(pathReader.next(), env));
       } else {
@@ -492,8 +509,10 @@ function preEvaluate(exp, env) {
 
   switch(exp.type) {
     case 'formula':
+      env.template.updated = true;
       const relation = preEvaluate(exp.value, env);
-      bindRelation(exp, env);
+      if(env.property === 'Rows')
+        makeQueryModel(exp, env);
       break;
 
     case 'binary':
@@ -524,14 +543,20 @@ function preEvaluate(exp, env) {
   }
 }
 
+/**
+ * Reset the entire system. This is usefull if a screen has already been render, in order to unset all objects
+ * @memberof Uvis
+ */
 function reset () {
   form.reset();
   canvas.reset();
 }
 
+/** @Global */
 window.uvis = {
   addEventListener: function (name, fn) {
-    events[name] = fn;
+    //events[name] = fn;
+    events.subscribe(name, fn);
   },
   saveVisfile: function (stream) {
     resourceProvider('visfile', {
@@ -566,10 +591,10 @@ window.uvis = {
     toolBox.setRole(roleType);
     toolBox.render();
   },
-  emit: function (name, args) {
+  /*emit: function (name, args) {
     if(events[name])
       events[name](args);
-  },
+  },*/
   getValidator: canvas.getValidator,
   registerValidator: canvas.registerValidator,
   registerComponent: canvas.registerComponent,
